@@ -1,0 +1,202 @@
+{
+  "providers": [
+    {
+      "name": "OpenAI",
+      "base_url": "https://api.openai.com/v1",
+      "default_model": "gpt-4o",
+      "auth_format": "Bearer",
+      "auth_env_var": "OPENAI_API_KEY",
+      "category": "International",
+      "tier": 1
+    },
+    {
+      "name": "Azure OpenAI",
+      "base_url": "https://{resource}.openai.azure.com/openai/",
+      "default_model": "gpt-4o",
+      "auth_format": "Azure Key",
+      "auth_env_var": "AZURE_OPENAI_API_KEY",
+      "category": "International",
+      "tier": 1
+    },
+    {
+      "name": "Groq",
+      "base_url": "https://api.groq.com/openai/v1",
+      "default_model": "llama-3.3-70b-versatile",
+      "auth_format": "Bearer",
+      "auth_env_var": "GROQ_API_KEY",
+      "category": "International",
+      "tier": 1
+    },
+    {
+      "name": "Together AI",
+      "base_url": "https://api.together.ai/v1",
+      "default_model": "meta-llama/Llama-3.3-70B-Instruct",
+      "auth_format": "Bearer",
+      "auth_env_var": "TOGETHER_API_KEY",
+      "category": "International",
+      "tier": 1
+    },
+    {
+      "name": "Fireworks AI",
+      "base_url": "https://api.fireworks.ai/inference/v1",
+      "default_model": "llama-v3-70b-instruct",
+      "auth_format": "Bearer",
+      "auth_env_var": "FIREWORKS_API_KEY",
+      "category": "International",
+      "tier": 1
+    },
+    {
+      "name": "DeepInfra",
+      "base_url": "https://api.deepinfra.com/v1/openai",
+      "default_model": "Llama-2-70b-chat-hf",
+      "auth_format": "Bearer",
+      "auth_env_var": "DEEPINFRA_API_KEY",
+      "category": "International",
+      "tier": 1
+    },
+    {
+      "name": "Anyscale",
+      "base_url": "https://api.endpoints.anyscale.com/v1",
+      "default_model": "Llama-2-7b-chat-hf",
+      "auth_format": "Bearer",
+      "auth_env_var": "ANYSCALE_API_KEY",
+      "category": "International",
+      "tier": 1
+    },
+    {
+      "name": "Cerebras",
+      "base_url": "https://api.cerebras.ai/v1",
+      "default_model": "llama-3.1-70b-instruct",
+      "auth_format": "Bearer",
+      "auth_env_var": "CEREBRAS_API_KEY",
+      "category": "International",
+      "tier": 1
+    },
+    {
+      "name": "Novita AI",
+      "base_url": "https://api.novita.ai/v3/openai",
+      "default_model": "llama-3.1-70b-instruct",
+      "auth_format": "Bearer",
+      "auth_env_var": "NOVITA_API_KEY",
+      "category": "International",
+      "tier": 1
+    },
+    {
+      "name": "MiniMax",
+      "base_url": "https://api.minimax.io/v1",
+      "default_model": "MiniMax-M2.1",
+      "auth_format": "Bearer",
+      "auth_env_var": "MINIMAX_API_KEY",
+      "category": "International",
+      "tier": 1
+    },
+    {
+      "name": "Ollama",
+      "base_url": "http://localhost:11434/v1",
+      "default_model": "llama3",
+      "auth_format": "None",
+      "auth_env_var": "",
+      "category": "Local",
+      "tier": 1
+    },
+    {
+      "name": "Mistral",
+      "base_url": "https://api.mistral.ai/v1",
+      "default_model": "mistral-large-latest",
+      "auth_format": "Bearer",
+      "auth_env_var": "MISTRAL_API_KEY",
+      "category": "International",
+      "tier": 2
+    },
+    {
+      "name": "DeepSeek",
+      "base_url": "https://api.deepseek.com/v1",
+      "default_model": "deepseek-chat",
+      "auth_format": "Bearer",
+      "auth_env_var": "DEEPSEEK_API_KEY",
+      "category": "International",
+      "tier": 2
+    },
+    {
+      "name": "Zhipu AI (GLM)",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "default_model": "glm-4",
+      "auth_format": "Bearer",
+      "auth_env_var": "ZHIPU_API_KEY",
+      "category": "Chinese",
+      "tier": 2
+    },
+    {
+      "name": "Alibaba Tongyi (Qwen)",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "default_model": "qwen-max",
+      "auth_format": "Bearer",
+      "auth_env_var": "ALIBABA_API_KEY",
+      "category": "Chinese",
+      "tier": 2
+    },
+    {
+      "name": "Moonshot AI (Kimi)",
+      "base_url": "https://api.moonshot.cn/v1",
+      "default_model": "kimi-chat",
+      "auth_format": "Bearer",
+      "auth_env_var": "MOONSHOT_API_KEY",
+      "category": "Chinese",
+      "tier": 2
+    },
+    {
+      "name": "iFlytek Spark",
+      "base_url": "https://spark-api.xf-yun.com/v1",
+      "default_model": "spark-v3.5",
+      "auth_format": "APIPassword",
+      "auth_env_var": "IFLYTEK_API_KEY",
+      "category": "Chinese",
+      "tier": 2
+    },
+    {
+      "name": "Tencent Hunyuan",
+      "base_url": "https://hunyuan.cloud.tencent.com/openapi",
+      "default_model": "hunyuan-pro",
+      "auth_format": "SID/Secret",
+      "auth_env_var": "TENCENT_API_KEY",
+      "category": "Chinese",
+      "tier": 2
+    },
+    {
+      "name": "Baidu Wenxin",
+      "base_url": "https://aip.baidubce.com/rpc/2.0/ai_custom/v1",
+      "default_model": "ernie-4.0-8k",
+      "auth_format": "Bearer",
+      "auth_env_var": "BAIDU_API_KEY",
+      "category": "Chinese",
+      "tier": 2
+    },
+    {
+      "name": "LocalAI",
+      "base_url": "http://localhost:8080/v1",
+      "default_model": "llama-2-7b",
+      "auth_format": "None",
+      "auth_env_var": "",
+      "category": "Local",
+      "tier": 2
+    },
+    {
+      "name": "LM Studio",
+      "base_url": "http://localhost:1234/v1",
+      "default_model": "llama-3-8b-instruct",
+      "auth_format": "None",
+      "auth_env_var": "",
+      "category": "Local",
+      "tier": 2
+    },
+    {
+      "name": "vLLM",
+      "base_url": "http://localhost:8000/v1",
+      "default_model": "llama-2-7b",
+      "auth_format": "None",
+      "auth_env_var": "",
+      "category": "Local",
+      "tier": 2
+    }
+  ]
+}
