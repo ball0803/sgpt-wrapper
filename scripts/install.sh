@@ -284,30 +284,26 @@ handle_curl_mode() {
     fi
 }
 
-# Download providers.json from GitHub (for curl pipe mode)
-download_providers_json() {
-    if [ ! -f "$PROVIDERS_JSON" ]; then
-        log_info "Downloading providers.json from GitHub..."
-        local providers_url="https://raw.githubusercontent.com/ball0803/sgpt-wrapper/main/scripts/providers.json"
-        
-        if command -v curl &>/dev/null; then
-            if curl -sL "$providers_url" -o "$PROVIDERS_JSON" 2>/dev/null; then
-                log_success "Downloaded providers.json"
-            else
-                log_error "Failed to download providers.json"
-                return 1
-            fi
-        elif command -v wget &>/dev/null; then
-            if wget -q "$providers_url" -O "$PROVIDERS_JSON" 2>/dev/null; then
-                log_success "Downloaded providers.json"
-            else
-                log_error "Failed to download providers.json"
-                return 1
-            fi
-        else
-            log_error "Neither curl nor wget available to download providers"
-            return 1
-        fi
+# Fetch providers from GitHub directly (no file saved)
+fetch_providers() {
+    local providers_url="https://raw.githubusercontent.com/ball0803/sgpt-wrapper/main/scripts/providers.json"
+    
+    if command -v curl &>/dev/null; then
+        curl -sL "$providers_url"
+    elif command -v wget &>/dev/null; then
+        wget -q -O - "$providers_url"
+    else
+        log_error "Neither curl nor wget available"
+        return 1
+    fi
+}
+
+# Get JSON source (fetched or local file)
+get_json_source() {
+    if is_curl_mode || [ ! -f "$PROVIDERS_JSON" ]; then
+        fetch_providers
+    else
+        cat "$PROVIDERS_JSON"
     fi
 }
 
@@ -420,17 +416,12 @@ install_pipx() {
 
 # Parse providers from JSON
 get_providers() {
-    if [ ! -f "$PROVIDERS_JSON" ]; then
-        log_error "providers.json not found: $PROVIDERS_JSON"
-        return 1
-    fi
-    
     if ! command -v jq &>/dev/null; then
         log_error "jq is required to parse providers.json"
         return 1
     fi
     
-    jq -r '.providers[] | "\(.name)|\(.default_model)|\(.category)"' "$PROVIDERS_JSON"
+    get_json_source | jq -r '.providers[] | "\(.name)|\(.default_model)|\(.category)"'
 }
 
 # Display provider menu
@@ -579,7 +570,7 @@ select_provider() {
     # If provider already specified, verify it exists
     if [ -n "$SELECTED_PROVIDER" ]; then
         local provider_lower=$(echo "$SELECTED_PROVIDER" | tr '[:upper:]' '[:lower:]')
-        if jq -e ".providers[] | select(.name | ascii_downcase == \"$provider_lower\")" "$PROVIDERS_JSON" &>/dev/null; then
+        if get_json_source | jq -e ".providers[] | select(.name | ascii_downcase == \"$provider_lower\")" &>/dev/null; then
             log_info "Using specified provider: $SELECTED_PROVIDER"
             return 0
         else
@@ -608,7 +599,7 @@ select_provider() {
     fi
     
     local provider_name
-    provider_name=$(jq -r ".providers[$((selection - 1))].name" "$PROVIDERS_JSON" 2>/dev/null)
+    provider_name=$(get_json_source | jq -r ".providers[$((selection - 1))].name" 2>/dev/null)
     
     if [ "$provider_name" = "null" ] || [ -z "$provider_name" ]; then
         log_error "Invalid selection"
@@ -623,7 +614,7 @@ select_provider() {
 get_provider_detail() {
     local provider="$1"
     local detail="$2"
-    jq -r ".providers[] | select(.name | ascii_downcase == \"$provider\" | ascii_downcase) | .$detail" "$PROVIDERS_JSON"
+    get_json_source | jq -r ".providers[] | select(.name | ascii_downcase == \"$provider\" | ascii_downcase) | .$detail"
 }
 
 # =============================================================================
@@ -1067,7 +1058,7 @@ list_providers() {
     
     echo -e "${BLUE}=== Available LLM Providers ===${NC}"
     echo ""
-    jq -r '.providers | to_entries[] | "\(.key + 1)). \(.value.name)\n   Default: \(.value.default_model)\n   Base URL: \(.value.base_url)\n   Auth: \(.value.auth_format)\n   Env Var: \(.value.auth_env_var)\n"' "$PROVIDERS_JSON"
+    get_json_source | jq -r '.providers | to_entries[] | "\(.key + 1)). \(.value.name)\n   Default: \(.value.default_model)\n   Base URL: \(.value.base_url)\n   Auth: \(.value.auth_format)\n   Env Var: \(.value.auth_env_var)\n"'
 }
 
 parse_arguments() {
@@ -1142,11 +1133,6 @@ main() {
     
     # Handle curl pipe mode
     handle_curl_mode
-    
-    # Download providers.json if in curl mode and file not found
-    if is_curl_mode; then
-        download_providers_json
-    fi
     
     # Check for jq dependency
     if ! command -v jq &>/dev/null; then
