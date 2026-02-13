@@ -284,6 +284,33 @@ handle_curl_mode() {
     fi
 }
 
+# Download providers.json from GitHub (for curl pipe mode)
+download_providers_json() {
+    if [ ! -f "$PROVIDERS_JSON" ]; then
+        log_info "Downloading providers.json from GitHub..."
+        local providers_url="https://raw.githubusercontent.com/ball0803/sgpt-wrapper/main/scripts/providers.json"
+        
+        if command -v curl &>/dev/null; then
+            if curl -sL "$providers_url" -o "$PROVIDERS_JSON" 2>/dev/null; then
+                log_success "Downloaded providers.json"
+            else
+                log_error "Failed to download providers.json"
+                return 1
+            fi
+        elif command -v wget &>/dev/null; then
+            if wget -q "$providers_url" -O "$PROVIDERS_JSON" 2>/dev/null; then
+                log_success "Downloaded providers.json"
+            else
+                log_error "Failed to download providers.json"
+                return 1
+            fi
+        else
+            log_error "Neither curl nor wget available to download providers"
+            return 1
+        fi
+    fi
+}
+
 # =============================================================================
 # PIPX HANDLING (Task 6)
 # =============================================================================
@@ -1115,6 +1142,11 @@ main() {
     
     # Handle curl pipe mode
     handle_curl_mode
+    
+    # Download providers.json if in curl mode and file not found
+    if is_curl_mode; then
+        download_providers_json
+    fi
     
     # Check for jq dependency
     if ! command -v jq &>/dev/null; then
