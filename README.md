@@ -1,257 +1,232 @@
 # sgpt-wrapper
 
-A flexible, extensible wrapper for interacting with various LLM providers through a unified interface. Designed to support system prompt injection, provider flexibility, and idempotent installation.
+A flexible, extensible wrapper for interacting with various LLM providers through a unified CLI interface. Features a sophisticated installer with 23+ provider support, Fish shell integration, and non-interactive installation modes.
 
 ## Features
 
-- **System Prompt Injection**: Inject custom system prompts to control model behavior.
-- **Provider Flexibility**: Support for multiple LLM providers including OpenAI, MiniMax, Ollama, Together AI, and Groq.
-- **Idempotent Installer**: Safe installation that doesn't overwrite existing configurations.
-- **Shell Integration**: Hotkey support for quick access from terminal.
+- **23+ LLM Providers**: OpenAI, MiniMax (M2.5 default), Groq, Together AI, Fireworks, DeepSeek, Mistral, and more
+- **Fish Shell Support**: Full Fish shell integration with completions
+- **Curl One-Liner Install**: curl -sL URL | bash for quick installation
+- **Non-Interactive Mode**: --no-interact --provider X --api-key Y for CI/CD
+- **Provider Selection Menu**: Interactive dropdown with 23+ providers
+- **System Prompt Injection**: Custom prompts via --role or environment variable
+- **Local LLM Support**: Ollama, LocalAI, LM Studio, vLLM
 
-## Prerequisites
+## Quick Start
 
-Before you begin, ensure you have the following installed:
+### Curl One-Liner (Recommended)
 
-- Python 3.8+
-- `pip` (Python package manager)
-- `pipx` (for installing CLI tools)
-- Shell: `bash`, `zsh`, or `fish`
+curl -sL https://raw.githubusercontent.com/ball0803/sgpt-wrapper/main/scripts/install.sh | bash
 
-## Installation
+### Interactive Installer
 
-### Quick Start
+# Clone and run installer
+git clone https://github.com/ball0803/sgpt-wrapper.git
+cd sgpt-wrapper
+./scripts/install.sh
 
-Install `sgpt-wrapper` globally using `pipx`:
+# Follow the interactive prompts to select your provider
 
-```bash
-pipx install sgpt-wrapper
-```
+### Non-Interactive (CI/CD)
 
-### Detailed Steps
+# Full non-interactive installation
+./scripts/install.sh --no-interact \
+  --provider minimax \
+  --model "MiniMax-M2.5" \
+  --api-key "your-api-key" \
+  --shell bash
 
-1. Clone the repository (if not already done):
-   ```bash
-   git clone https://github.com/yourusername/sgpt-wrapper.git
-   cd sgpt-wrapper
-   ```
+# With auto pipx installation
+./scripts/install.sh --no-interact --install-pipx --provider openai --api-key "key"
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Installer Options
 
-3. Install the CLI tool:
-   ```bash
-   pipx install .
-   ```
+./scripts/install.sh [OPTIONS]
 
-4. Verify installation:
-   ```bash
-   sgpt --version
-   ```
+OPTIONS:
+    --help                  Show this help message
+    --dry-run               Show actions without executing
+    --no-interact           Disable interactive prompts
+    --provider <name>       Set provider directly (e.g., openai, minimax, ollama)
+    --model <name>         Set default model
+    --api-key <key>        Set API key
+    --shell <type>         Set shell type (bash, fish, zsh)
+    --install-pipx         Auto-install pipx if not found
+    --force                Force overwrite existing configs
+    --list-providers       List available providers
+
+ENVIRONMENT VARIABLES (for curl pipe mode):
+    SGPT_PROVIDER           Provider name
+    SGPT_MODEL             Model name
+    SGPT_API_KEY           API key
+
+## Supported Providers (23+)
+
+### International Providers
+
+| Provider | Default Model | Env Variable |
+|----------|---------------|--------------|
+| **MiniMax** (Default) | MiniMax-M2.5 | MINIMAX_API_KEY |
+| OpenAI | gpt-4.5 | OPENAI_API_KEY |
+| Groq | llama-3.3-70b-versatile | GROQ_API_KEY |
+| Together AI | DeepSeek-R1 | TOGETHER_API_KEY |
+| Fireworks AI | DeepSeek-V3.2 | FIREWORKS_API_KEY |
+| DeepInfra | Llama-3.3-70B | DEEPINFRA_API_KEY |
+| Anyscale | Llama-3.1-70B | ANYSCALE_API_KEY |
+| Cerebras | llama-3.1-70b-instruct | CEREBRAS_API_KEY |
+| Novita AI | MiniMax-M2.1 | NOVITA_API_KEY |
+| Mistral | Mistral-Large-3 | MISTRAL_API_KEY |
+| DeepSeek | DeepSeek-V3.2 | DEEPSEEK_API_KEY |
+
+### Chinese Providers
+
+| Provider | Default Model | Env Variable |
+|----------|---------------|--------------|
+| Zhipu AI (GLM) | GLM-5 | ZHIPU_API_KEY |
+| Alibaba (Qwen) | qwen-max | ALIBABA_API_KEY |
+| Moonshot (Kimi) | kimi-k2.5 | MOONSHOT_API_KEY |
+| iFlytek Spark | spark-v3.5 | IFLYTEK_API_KEY |
+| Tencent Hunyuan | hunyuan-turbo | TENCENT_API_KEY |
+| Baidu (Ernie) | ernie-5.0 | BAIDU_API_KEY |
+
+### Local Providers
+
+| Provider | Default Model | Notes |
+|----------|---------------|-------|
+| Ollama | llama3.3 | localhost:11434 |
+| LocalAI | llama3.2 | localhost:8080 |
+| LM Studio | llama3.3 | localhost:1234 |
+| vLLM | llama3.3-70b-instruct | localhost:8000 |
+
+### Custom Provider
+
+Use your own OpenAI-compatible endpoint:
+
+./scripts/install.sh --no-interact \
+  --provider Custom \
+  --api-key "your-key"
+
+Then manually edit ~/.config/shell_gpt/.sgptrc to set your custom base URL and model.
 
 ## Configuration
 
-### Provider Setup
+### Config File Location
 
-Configure your preferred LLM provider by setting environment variables or using the configuration file.
+~/.config/shell_gpt/.sgptrc
 
-#### OpenAI
+### Config Format
 
-```bash
-export OPENAI_API_KEY="your-api-key"
-```
+[default]
+provider = minimax
+api_key = your_api_key_here
 
-#### MiniMax
+[minimax]
+model = MiniMax-M2.5
+API_BASE_URL = https://api.minimax.io/v1
 
-```bash
-export MINIMAX_API_KEY="your-api-key"
-```
+### Environment Variables
 
-#### Ollama
+# Provider
+export OPENAI_API_KEY="your-key"
+export MINIMAX_API_KEY="your-key"
+export GROQ_API_KEY="your-key"
 
-```bash
-export OLLAMA_BASE_URL="http://localhost:11434"
-```
+# System Prompt
+export SGPT_SYSTEM_PROMPT="You are a helpful coding assistant."
 
-#### Together AI
-
-```bash
-export TOGETHER_API_KEY="your-api-key"
-```
-
-#### Groq
-
-```bash
-export GROQ_API_KEY="your-api-key"
-```
-
-### System Prompt Configuration
-
-You can customize the system prompt by setting the `SGPT_SYSTEM_PROMPT` environment variable:
-
-```bash
-export SGPT_SYSTEM_PROMPT="You are a helpful assistant that follows instructions precisely."
-```
+# Custom Endpoint
+export API_BASE_URL="https://your-endpoint.com/v1"
+export DEFAULT_MODEL="your-model"
 
 ## Usage Examples
 
-### Shell Commands
+### Basic Query
 
-Use `sgpt` directly in your terminal to generate text:
-
-```bash
-sgpt "Write a poem about cats"
-```
+sgpt "What is the capital of France?"
 
 ### Code Generation
 
-Generate code snippets with specific language and context:
+sgpt --code "Write a Python function to calculate Fibonacci"
 
-```bash
-sgpt "Generate a Python function to calculate Fibonacci sequence"
-```
+### Custom System Prompt
 
-### Custom System Prompts
+sgpt --role senior-dev "Explain REST APIs"
 
-Override the default system prompt with your own:
+### List Providers
 
-```bash
-SGPT_SYSTEM_PROMPT="You are a senior software engineer. Respond with concise, technical answers." sgpt "Explain how to implement a binary search tree"
-```
-
-## Provider Documentation
-
-### OpenAI
-
-- API Key: `OPENAI_API_KEY`
-- Model: `gpt-3.5-turbo`, `gpt-4`, etc.
-
-### MiniMax
-
-- API Key: `MINIMAX_API_KEY`
-- Model: `abab5.5`, `abab6`, etc.
-
-### Ollama
-
-- Base URL: `OLLAMA_BASE_URL` (default: `http://localhost:11434`)
-- Model: `llama3`, `mistral`, etc.
-
-### Together AI
-
-- API Key: `TOGETHER_API_KEY`
-- Model: `meta-llama/Meta-Llama-3-8B`, `mistralai/Mistral-7B-Instruct-v0.2`, etc.
-
-### Groq
-
-- API Key: `GROQ_API_KEY`
-- Model: `llama3-8b-8192`, `mixtral-8x7b-32768`, etc.
+./scripts/install.sh --list-providers
 
 ## Shell Integration
 
-### Hotkey Support
+### Fish Shell
 
-Enable hotkey support by adding the following to your shell profile (`~/.bashrc`, `~/.zshrc`, or `~/.fish/config.fish`):
+The installer automatically configures Fish shell:
 
-```bash
+# ~/.config/fish/functions/sgpt.fish is created automatically
+sgpt "Hello"
+
+### Bash/Zsh
+
 # Add to ~/.bashrc or ~/.zshrc
-alias sgpt='sgpt-wrapper'
+alias sgpt='sgpt'
+export SGPT_SYSTEM_PROMPT="Your custom prompt"
 
-# For hotkey support, add this to your shell profile
-# Example: Ctrl+Shift+G to trigger sgpt
-bind -x '"\C-\C-g": sgpt-wrapper"
-```
+## Development
 
-### Auto-completion
+### Running Tests
 
-Install auto-completion for `sgpt`:
+bash tests/run_tests.sh
+.sh --filter installer
+bash tests/runbash tests/run_tests_tests.sh --coverage
 
-```bash
-sgpt --install-completion
-```
+### Adding a Provider
+
+1. Add provider to scripts/providers.json
+2. Add configuration function to scripts/install.sh
+3. Update templates/sgptrc.template
+4. Add tests
 
 ## Troubleshooting
 
-### Common Issues and Solutions
+### pipx not found
 
-#### 1. `sgpt` command not found
+# Auto-install pipx
+./scripts/install.sh --install-pipx
 
-Ensure `pipx` is in your PATH and the installation was successful:
+# Or manually
+pip install pipx
 
-```bash
-pipx list
-```
+### Connection refused (Local providers)
 
-If not installed, reinstall:
-
-```bash
-pipx install sgpt-wrapper
-```
-
-#### 2. API Key not found
-
-Set the appropriate environment variable for your provider:
-
-```bash
-export OPENAI_API_KEY="your-api-key"
-```
-
-#### 3. Model not found
-
-Verify the model name is correct for your provider. Check the provider's documentation for available models.
-
-#### 4. Connection refused (Ollama)
-
-Ensure Ollama is running and the base URL is correct:
-
-```bash
+# Ollama
 ollama serve
-```
 
-#### 5. Permission denied
+# LM Studio
+# Open LM Studio app and start server
 
-Ensure you have execute permissions for the `sgpt` binary:
+# LocalAI
+docker run -d -p 8080:8080 quay.io/go-skynet/local-ai:latest
 
-```bash
-chmod +x /path/to/sgpt
-```
+### Invalid API Key
 
-## Contributing
+Check your provider's API key format. Some providers require specific prefixes:
 
-We welcome contributions! Here's how you can help:
+# Groq keys start with gho_
+# OpenAI keys start with sk-
 
-### How to Extend or Modify
+### Fish shell issues
 
-1. Fork the repository.
-2. Create a new branch for your feature or bug fix:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-3. Make your changes.
-4. Write tests for your changes (if applicable).
-5. Commit your changes:
-   ```bash
-   git commit -m "feat: add your feature"
-   ```
-6. Push to the branch:
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-7. Open a pull request.
+# Validate Fish syntax
+fish -n ~/.config/fish/config.fish
 
-### Code Style
-
-Follow the existing code style. We use `black` for formatting and `flake8` for linting.
-
-### Testing
-
-Run tests before submitting a pull request:
-
-```bash
-pytest tests/
-```
+# Re-run installer for Fish
+./scripts/install.sh --shell fish
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License - see LICENSE file for details.
+
+## Links
+
+- GitHub: https://github.com/ball0803/sgpt-wrapper
+- Issues: https://github.com/ball0803/sgpt-wrapper/issues
