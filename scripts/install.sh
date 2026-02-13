@@ -58,6 +58,18 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $*" >&2
 }
 
+prompt_read() {
+    if [ -t 0 ]; then
+        read -r "$@"
+    elif [ -e /dev/tty ]; then
+        read -r "$@" </dev/tty
+    else
+        echo "Error: Interactive input required but terminal not available" >&2
+        echo "Please run locally: curl -sL URL -o install.sh && bash install.sh" >&2
+        exit 1
+    fi
+}
+
 dry_run() {
     if [ "$DRY_RUN" = true ]; then
         echo -e "${YELLOW}[DRY-RUN]${NC} $*"
@@ -340,7 +352,7 @@ offer_pipx_install() {
     
     echo -e "${YELLOW}pipx is required to install sgpt-wrapper.${NC}"
     echo "Would you like to install pipx now? [y/N]"
-    read -r response
+    prompt_read response
     
     if [[ "$response" =~ ^[Yy]$ ]]; then
         install_pipx
@@ -455,7 +467,7 @@ run_menu() {
         echo "6. Exit"
         echo ""
         echo -en "${YELLOW}Select an option [1-6]: ${NC}"
-        read -r choice
+        prompt_read choice
         
         case "$choice" in
             1)
@@ -472,7 +484,7 @@ run_menu() {
                 echo ""
                 echo "Changing model..."
                 echo -en "Enter new model name: "
-                read -r new_model
+                prompt_read new_model
                 if [ -n "$new_model" ]; then
                     SELECTED_MODEL="$new_model"
                     generate_config
@@ -483,7 +495,7 @@ run_menu() {
                 echo ""
                 echo "Updating API key..."
                 echo -en "Enter API key: "
-                read -r new_api_key
+                prompt_read new_api_key
                 if [ -n "$new_api_key" ]; then
                     SELECTED_API_KEY="$new_api_key"
                     generate_config
@@ -529,7 +541,7 @@ uninstall_sgpt() {
         echo "[DRY RUN] Would remove:"
     else
         echo -en "${YELLOW}Are you sure you want to uninstall? [y/N]: ${NC}"
-        read -r confirm
+        prompt_read confirm
         if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
             log_info "Uninstall cancelled"
             return
@@ -591,7 +603,7 @@ select_provider() {
     display_provider_menu
     
     echo -e "${YELLOW}Select a provider [1-22]:${NC}"
-    read -r selection
+    prompt_read selection
     
     if [ "$selection" = "0" ] || [ -z "$selection" ]; then
         log_warning "Provider selection cancelled"
