@@ -7,6 +7,35 @@ get_shell_mode() {
     [ "$DEFAULT_EXECUTE_SHELL_CMD" = "true" ] && echo "execute" || echo "clipboard"
 }
 
+build_prompt() {
+    local user_prompt="$1"
+    local system_prompt=""
+    
+    # Check for --system-prompt flag in arguments
+    shift
+    local args=("$@")
+    for arg in "${args[@]}"; do
+        if [ "$prev_arg" = "--system-prompt" ] || [ "$prev_arg" = "-sp" ]; then
+            system_prompt="$arg"
+            break
+        fi
+        prev_arg="$arg"
+    done
+    
+    # Fall back to config variable if no flag provided
+    if [ -z "$system_prompt" ] && [ -n "$WRAPPER_SYSTEM_PROMPT" ]; then
+        system_prompt="$WRAPPER_SYSTEM_PROMPT"
+    fi
+    
+    # Return combined prompt or original if no system prompt
+    if [ -n "$system_prompt" ]; then
+        echo "System: $system_prompt
+User: $user_prompt"
+    else
+        echo "$user_prompt"
+    fi
+}
+
 extract_command() {
     perl -pe 's/<think>.*?<\/think>//g' | grep -v '^$' | grep -v 'Warning' | grep -v '^Thinking:' | tail -1
 }
@@ -14,16 +43,34 @@ extract_command() {
 handle_shell() {
     local no_interaction=""
     local prompt=""
+    local system_prompt=""
     local args=("$@")
     
     for arg in "${args[@]}"; do
         case "$arg" in
             --no-interaction|-n) no_interaction="yes" ;;
-            *) prompt="${prompt}${prompt:+ }${arg}" ;;
+            --system-prompt|-sp) ;;
+            *)
+                if [ "$prev_arg" = "--system-prompt" ] || [ "$prev_arg" = "-sp" ]; then
+                    system_prompt="$arg"
+                else
+                    prompt="${prompt}${prompt:+ }${arg}"
+                fi
+                ;;
         esac
+        prev_arg="$arg"
     done
     
     prompt=$(echo "$prompt" | sed 's/^ *| *$//')
+    
+    # Build combined prompt if system prompt is set
+    if [ -n "$system_prompt" ]; then
+        prompt="System: $system_prompt
+User: $prompt"
+    elif [ -n "$WRAPPER_SYSTEM_PROMPT" ]; then
+        prompt="System: $WRAPPER_SYSTEM_PROMPT
+User: $prompt"
+    fi
     
     raw_output=$(~/.local/share/pipx/venvs/shell-gpt/bin/sgpt --shell --no-interaction "$prompt" 2>&1)
     cmd=$(echo "$raw_output" | extract_command)
@@ -67,6 +114,27 @@ handle_shell() {
 
 handle_code() {
     local prompt="$*"
+    local system_prompt=""
+    local args=("$@")
+    
+    # Extract system prompt from arguments
+    for arg in "${args[@]}"; do
+        if [ "$prev_arg" = "--system-prompt" ] || [ "$prev_arg" = "-sp" ]; then
+            system_prompt="$arg"
+            break
+        fi
+        prev_arg="$arg"
+    done
+    
+    # Build combined prompt if system prompt is set
+    if [ -n "$system_prompt" ]; then
+        prompt="System: $system_prompt
+User: $prompt"
+    elif [ -n "$WRAPPER_SYSTEM_PROMPT" ]; then
+        prompt="System: $WRAPPER_SYSTEM_PROMPT
+User: $prompt"
+    fi
+    
     local code=$(~/.local/share/pipx/venvs/shell-gpt/bin/sgpt --code "$prompt" 2>&1)
     code=$(echo "$code" | grep -v "Warning:" | tr -d '\r')
     
