@@ -39,12 +39,31 @@ cd sgpt-wrapper
 
 ### Non-Interactive (CI/CD)
 
+Without flags, install.sh runs interactively. Use --no-interact for automated installs:
+
 ```bash
+# Basic non-interactive (requires provider + api-key for cloud)
 ./scripts/install.sh --no-interact \
   --provider minimax \
-  --model "MiniMax-M2.5" \
   --api-key "your-api-key"
+
+# With model
+./scripts/install.sh --no-interact \
+  --provider openai \
+  --model gpt-4 \
+  --api-key "your-api-key"
+
+# Force without api-key (for local providers like Ollama)
+./scripts/install.sh --no-interact \
+  --provider ollama \
+  --force
 ```
+
+**Required in non-interactive mode**:
+- `--provider` (always required)
+- `--api-key` (required for cloud providers, not local)
+
+**Use `--force`** to skip validation in non-interactive mode.
 
 ## 📖 Usage
 

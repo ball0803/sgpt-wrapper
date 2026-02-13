@@ -1,7 +1,100 @@
 #!/bin/bash
 # sgpt-wrapper - Clean version that removes thinking blocks
 
+# Version info
+WRAPPER_VERSION="1.0.0"
+
 source ~/.config/shell_gpt/.sgptrc 2>/dev/null
+
+# Get sgpt version
+get_sgpt_version() {
+    ~/.local/share/pipx/venvs/shell-gpt/bin/sgpt --version 2>/dev/null || echo "unknown"
+}
+
+# Handle --menu flag - show interactive configuration menu
+handle_menu() {
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local install_script="$(dirname "$script_dir")/scripts/install.sh"
+    
+    if [ -f "$install_script" ]; then
+        "$install_script" --menu
+    else
+        echo "Error: install.sh not found"
+        exit 1
+    fi
+}
+
+# Handle --uninstall flag
+handle_uninstall() {
+    local dry_run=false
+    local clean_keys=false
+    
+    # Parse additional flags
+    shift
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run|-d) dry_run=true ;;
+            --clean-keys|-k) clean_keys=true ;;
+            *) ;;
+        esac
+        shift
+    done
+    
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local install_script="$(dirname "$script_dir")/scripts/install.sh"
+    
+    if [ -f "$install_script" ]; then
+        local args=("--uninstall")
+        [ "$dry_run" = true ] && args+=("--dry-run")
+        [ "$clean_keys" = true ] && args+=("--clean-keys")
+        "$install_script" "${args[@]}"
+    else
+        echo "Error: install.sh not found"
+        exit 1
+    fi
+}
+
+# Handle --help flag
+handle_help() {
+    echo "sgpt-wrapper v$WRAPPER_VERSION"
+    echo ""
+    echo "Usage: sgpt [options] [prompt]"
+    echo ""
+    echo "Wrapper Options:"
+    echo "  --menu, -m           Show interactive configuration menu"
+    echo "  --uninstall          Uninstall sgpt-wrapper"
+    echo "  --help, -h           Show this help message"
+    echo "  --version, -v        Show version information"
+    echo ""
+    echo "ShellGPT Options (passed through to sgpt):"
+    echo "  -s, --shell              Execute shell commands"
+    echo "  -c, --code              Generate code"
+    echo "  -n, --no-interaction    Don't prompt for confirmation"
+    echo "  --system-prompt, -sp    Set system prompt"
+    echo "  --role <name>           Use predefined role"
+    echo "  --chat <name>           Continue chat session"
+    echo "  --list-roles            List available roles"
+    echo "  --list-chats            List chat sessions"
+    echo ""
+    echo "Examples:"
+    echo "  sgpt 'What is the weather?'"
+    echo "  sgpt --shell 'Find large files'"
+    echo "  sgpt --code 'Write a Fibonacci function'"
+    echo "  sgpt --role senior-dev 'Explain REST APIs'"
+    echo ""
+    echo "For full sgpt options, run: ~/.local/share/pipx/venvs/shell-gpt/bin/sgpt --help"
+    echo ""
+    echo "Configuration:"
+    echo "  Config: ~/.config/shell_gpt/.sgptrc"
+    echo "  API Keys: ~/.local/share/sgpt/auth.json"
+}
+
+# Handle --version flag
+handle_version() {
+    local sgpt_ver
+    sgpt_ver=$(get_sgpt_version)
+    echo "sgpt-wrapper v$WRAPPER_VERSION | sgpt v$sgpt_ver"
+}
 
 get_shell_mode() {
     [ "$DEFAULT_EXECUTE_SHELL_CMD" = "true" ] && echo "execute" || echo "clipboard"
@@ -147,6 +240,10 @@ User: $prompt"
 }
 
 case "$1" in
+    -m|--menu) shift; handle_menu "$@" ;;
+    --uninstall) shift; handle_uninstall "$@" ;;
+    -h|--help) handle_help ;;
+    -v|--version) handle_version ;;
     -s|--shell) shift; handle_shell "$@" ;;
     -c|--code) shift; handle_code "$@" ;;
     *) ~/.local/share/pipx/venvs/shell-gpt/bin/sgpt "$@" ;;

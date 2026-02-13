@@ -30,6 +30,7 @@ CONFIG_FILE="$CONFIG_DIR/.sgptrc"
 # =============================================================================
 DRY_RUN=false
 NO_INTERACT=false
+MENU_MODE=false
 SELECTED_PROVIDER=""
 SELECTED_MODEL=""
 SELECTED_API_KEY=""
@@ -415,6 +416,129 @@ display_provider_menu() {
     
     echo -e "${YELLOW}0)${NC} Cancel / Skip"
     echo ""
+}
+
+# Run interactive menu
+run_menu() {
+    while true; do
+        echo -e "${GREEN}=== sgpt-wrapper Configuration Menu ===${NC}"
+        echo ""
+        echo "1. Change Provider"
+        echo "2. Change Model"
+        echo "3. Update API Key"
+        echo "4. View Current Config"
+        echo "5. Uninstall sgpt-wrapper"
+        echo "6. Exit"
+        echo ""
+        echo -en "${YELLOW}Select an option [1-6]: ${NC}"
+        read -r choice
+        
+        case "$choice" in
+            1)
+                echo ""
+                echo "Changing provider..."
+                SELECTED_PROVIDER=""
+                select_provider
+                if [ -n "$SELECTED_PROVIDER" ]; then
+                    generate_config
+                    log_success "Provider changed to: $SELECTED_PROVIDER"
+                fi
+                ;;
+            2)
+                echo ""
+                echo "Changing model..."
+                echo -en "Enter new model name: "
+                read -r new_model
+                if [ -n "$new_model" ]; then
+                    SELECTED_MODEL="$new_model"
+                    generate_config
+                    log_success "Model changed to: $SELECTED_MODEL"
+                fi
+                ;;
+            3)
+                echo ""
+                echo "Updating API key..."
+                echo -en "Enter API key: "
+                read -r new_api_key
+                if [ -n "$new_api_key" ]; then
+                    SELECTED_API_KEY="$new_api_key"
+                    generate_config
+                    log_success "API key updated"
+                fi
+                ;;
+            4)
+                echo ""
+                echo "Current Configuration:"
+                if [ -f "$CONFIG_FILE" ]; then
+                    cat "$CONFIG_FILE"
+                else
+                    echo "No configuration found"
+                fi
+                echo ""
+                ;;
+            5)
+                echo ""
+                echo "Uninstalling..."
+                uninstall_sgpt
+                break
+                ;;
+            6)
+                echo ""
+                log_info "Exiting..."
+                break
+                ;;
+            *)
+                echo ""
+                log_error "Invalid option"
+                ;;
+        esac
+        echo ""
+    done
+}
+
+# Uninstall sgpt-wrapper
+uninstall_sgpt() {
+    echo -e "${YELLOW}=== Uninstalling sgpt-wrapper ===${NC}"
+    echo ""
+    
+    if [ "$DRY_RUN" = true ]; then
+        echo "[DRY RUN] Would remove:"
+    else
+        echo -en "${YELLOW}Are you sure you want to uninstall? [y/N]: ${NC}"
+        read -r confirm
+        if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+            log_info "Uninstall cancelled"
+            return
+        fi
+    fi
+    
+    echo "Removing: $CONFIG_FILE"
+    [ "$DRY_RUN" = false ] && rm -f "$CONFIG_FILE"
+    
+    echo "Removing: $CONFIG_DIR"
+    [ "$DRY_RUN" = false ] && rm -rf "$CONFIG_DIR"
+    
+    if [ -d "$HOME/.local/share/sgpt" ]; then
+        echo "Removing: $HOME/.local/share/sgpt"
+        [ "$DRY_RUN" = false ] && rm -rf "$HOME/.local/share/sgpt"
+    fi
+    
+    if [ -d "$HOME/.local/share/pipx/venvs/sgpt" ]; then
+        echo "Removing pipx venv: $HOME/.local/share/pipx/venvs/sgpt"
+        [ "$DRY_RUN" = false ] && pipx uninstall sgpt 2>/dev/null || true
+    fi
+    
+    if [ -f "$HOME/.config/fish/functions/sgpt.fish" ]; then
+        echo "Removing Fish function: $HOME/.config/fish/functions/sgpt.fish"
+        [ "$DRY_RUN" = false ] && rm -f "$HOME/.config/fish/functions/sgpt.fish"
+    fi
+    
+    echo ""
+    if [ "$DRY_RUN" = false ]; then
+        log_success "sgpt-wrapper has been uninstalled"
+    else
+        log_info "Dry run complete"
+    fi
 }
 
 # Select provider interactively
@@ -865,6 +989,7 @@ Usage: $0 [OPTIONS]
 
 OPTIONS:
     --help                  Show this help message
+    --menu                 Show interactive configuration menu
     --dry-run               Show actions without executing
     --no-interact           Disable interactive prompts
     --provider <name>       Set provider directly (e.g., openai, minimax, ollama)
@@ -919,6 +1044,10 @@ parse_arguments() {
                 show_help
                 exit 0
                 ;;
+            --menu)
+                MENU_MODE=true
+                shift
+                ;;
             --dry-run)
                 DRY_RUN=true
                 shift
@@ -972,6 +1101,12 @@ main() {
     # Parse command line arguments
     parse_arguments "$@"
     
+    # Handle menu mode
+    if [ "$MENU_MODE" = true ]; then
+        run_menu
+        exit 0
+    fi
+    
     # Handle curl pipe mode
     handle_curl_mode
     
@@ -979,6 +1114,28 @@ main() {
     if ! command -v jq &>/dev/null; then
         log_error "jq is required. Please install jq first."
         exit 1
+    fi
+    
+    # Validate required fields in non-interactive mode
+    if [ "$NO_INTERACT" = true ] && [ "$FORCE_OVERWRITE" = false ]; then
+        if [ -z "$SELECTED_PROVIDER" ]; then
+            log_error "Provider is required in non-interactive mode"
+            log_info "Use --provider to specify a provider, or --force to override"
+            exit 1
+        fi
+        
+        # Check if provider needs API key (not local)
+        local provider_lower=$(echo "$SELECTED_PROVIDER" | tr '[:upper:]' '[:lower:]')
+        local is_local=false
+        case "$provider_lower" in
+            ollama|localai|lmstudio|vllm) is_local=true ;;
+        esac
+        
+        if [ "$is_local" = false ] && [ -z "$SELECTED_API_KEY" ]; then
+            log_error "API key is required for provider '$SELECTED_PROVIDER' in non-interactive mode"
+            log_info "Use --api-key to specify an API key, or --force to override"
+            exit 1
+        fi
     fi
     
     # Welcome message
