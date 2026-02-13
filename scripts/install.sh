@@ -257,7 +257,7 @@ is_interactive() {
 # Handle curl one-liner mode
 handle_curl_mode() {
     if is_curl_mode; then
-        log_info "Detected curl pipe mode (non-interactive)"
+        log_info "Detected curl pipe mode"
         
         # Read environment variables from input
         while IFS='=' read -r key value; do
@@ -270,10 +270,16 @@ handle_curl_mode() {
             fi
         done
         
-        # Auto-enable non-interactive mode
-        if [ "$NO_INTERACT" = false ]; then
-            NO_INTERACT=true
-            log_info "Auto-enabled non-interactive mode for curl pipe"
+        # If provider is provided via args or env, use non-interactive mode
+        # Otherwise, allow interactive mode (show menu wizard)
+        if [ -n "$SELECTED_PROVIDER" ]; then
+            if [ "$NO_INTERACT" = false ]; then
+                NO_INTERACT=true
+                log_info "Provider specified - using non-interactive mode"
+            fi
+        else
+            log_info "No provider specified - allowing interactive mode"
+            NO_INTERACT=false
         fi
     fi
 }
