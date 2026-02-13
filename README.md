@@ -39,24 +39,26 @@ cd sgpt-wrapper
 
 ### Non-Interactive (CI/CD)
 
-Without flags, install.sh runs interactively. Use --no-interact for automated installs:
+Use curl to install directly, or clone for local development:
 
 ```bash
-# Basic non-interactive (requires provider + api-key for cloud)
-./scripts/install.sh --no-interact \
+# Basic non-interactive install (requires provider + api-key for cloud)
+curl -sL https://raw.githubusercontent.com/ball0803/sgpt-wrapper/main/scripts/install.sh | bash -s -- \
+  --no-interact \
   --provider minimax \
   --api-key "your-api-key"
 
-# With model
-./scripts/install.sh --no-interact \
+# With custom model
+curl -sL https://raw.githubusercontent.com/ball0803/sgpt-wrapper/main/scripts/install.sh | bash -s -- \
+  --no-interact \
   --provider openai \
   --model gpt-4 \
   --api-key "your-api-key"
 
-# Force without api-key (for local providers like Ollama)
-./scripts/install.sh --no-interact \
-  --provider ollama \
-  --force
+# Local providers don't need api-key (Ollama, LocalAI, LM Studio, vLLM)
+curl -sL https://raw.githubusercontent.com/ball0803/sgpt-wrapper/main/scripts/install.sh | bash -s -- \
+  --no-interact \
+  --provider ollama
 ```
 
 **Required in non-interactive mode**:
@@ -77,11 +79,14 @@ sgpt --code "Write a Python function to calculate Fibonacci"
 # Custom system prompt
 sgpt --role senior-dev "Explain REST APIs"
 
+# Interactive configuration menu (self-contained - no install.sh needed)
+sgpt --menu
+
 # List available providers
 ./scripts/install.sh --list-providers
 
-# Open interactive menu
-./scripts/install.sh --menu
+# Uninstall
+sgpt --uninstall
 ```
 
 ## ⚙️ Configuration
