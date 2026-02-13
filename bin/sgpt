@@ -1,36 +1,297 @@
 #!/bin/bash
-# sgpt-wrapper - Clean version that removes thinking blocks
+# sgpt-wrapper - Self-contained wrapper with interactive menu and uninstall
 
 # Version info
-WRAPPER_VERSION="1.0.0"
+WRAPPER_VERSION="1.0.1"
 
-source ~/.config/shell_gpt/.sgptrc 2>/dev/null
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-# Get sgpt version
+# Paths
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/shell_gpt"
+CONFIG_FILE="$CONFIG_DIR/.sgptrc"
+AUTH_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/sgpt"
+AUTH_FILE="$AUTH_DIR/auth.json"
+
+# Source config if exists
+source "$CONFIG_FILE" 2>/dev/null
+
+# =============================================================================
+# PROVIDER DEFINITIONS (Embedded - no external file needed)
+# =============================================================================
+
+declare -A PROVIDERS
+PROVIDER_KEYS=()
+
+setup_providers() {
+    # International Providers
+    PROVIDERS["openai"]="OpenAI|https://api.openai.com/v1|gpt-4.5|Bearer|OPENAI_API_KEY|International"
+    PROVIDERS["azure-openai"]="Azure OpenAI|https://{resource}.openai.azure.com/openai/|gpt-4.5|Azure Key|AZURE_OPENAI_API_KEY|International"
+    PROVIDERS["groq"]="Groq|https://api.groq.com/openai/v1|llama-3.3-70b-versatile|Bearer|GROQ_API_KEY|International"
+    PROVIDERS["together"]="Together AI|https://api.together.ai/v1|DeepSeek-R1|Bearer|TOGETHER_API_KEY|International"
+    PROVIDERS["fireworks"]="Fireworks AI|https://api.fireworks.ai/inference/v1|DeepSeek-V3.2|Bearer|FIREWORKS_API_KEY|International"
+    PROVIDERS["deepinfra"]="DeepInfra|https://api.deepinfra.com/v1/openai|Llama-3.3-70B|Bearer|DEEPINFRA_API_KEY|International"
+    PROVIDERS["anyscale"]="Anyscale|https://api.endpoints.anyscale.com/v1|Llama-3.1-70B|Bearer|ANYSCALE_API_KEY|International"
+    PROVIDERS["cerebras"]="Cerebras|https://api.cerebras.ai/v1|llama-3.1-70b-instruct|Bearer|CEREBRAS_API_KEY|International"
+    PROVIDERS["novita"]="Novita AI|https://api.novita.ai/v3/openai|MiniMax-M2.1|Bearer|NOVITA_API_KEY|International"
+    PROVIDERS["minimax"]="MiniMax|https://api.minimax.io/v1|MiniMax-M2.5|Bearer|MINIMAX_API_KEY|International"
+    PROVIDERS["mistral"]="Mistral|https://api.mistral.ai/v1|Mistral-Large-3|Bearer|MISTRAL_API_KEY|International"
+    PROVIDERS["deepseek"]="DeepSeek|https://api.deepseek.com/v1|DeepSeek-V3.2|Bearer|DEEPSEEK_API_KEY|International"
+    
+    # Chinese Providers
+    PROVIDERS["zhipu"]="Zhipu AI (GLM)|https://open.bigmodel.cn/api/paas/v4|GLM-5|Bearer|ZHIPU_API_KEY|Chinese"
+    PROVIDERS["alibaba"]="Alibaba (Qwen)|https://dashscope.aliyuncs.com/compatible-mode/v1|qwen-max|Bearer|ALIBABA_API_KEY|Chinese"
+    PROVIDERS["moonshot"]="Moonshot (Kimi)|https://api.moonshot.cn/v1|kimi-k2.5|Bearer|MOONSHOT_API_KEY|Chinese"
+    PROVIDERS["iflytek"]="iFlytek Spark|https://spark-api.xf-yun.com/v1|spark-v3.5|APIPassword|IFLYTEK_API_KEY|Chinese"
+    PROVIDERS["tencent"]="Tencent Hunyuan|https://hunyuan.cloud.tencent.com/openapi|hunyuan-turbo|SID/Secret|TENCENT_API_KEY|Chinese"
+    PROVIDERS["baidu"]="Baidu (Ernie)|https://aip.baidubce.com/rpc/2.0/ai_custom/v1|ernie-5.0|Bearer|BAIDU_API_KEY|Chinese"
+    
+    # Local Providers
+    PROVIDERS["ollama"]="Ollama|http://localhost:11434/v1|llama3.3|None||Local"
+    PROVIDERS["localai"]="LocalAI|http://localhost:8080/v1|llama3.2|None||Local"
+    PROVIDERS["lmstudio"]="LM Studio|http://localhost:1234/v1|llama3.3|None||Local"
+    PROVIDERS["vllm"]="vLLM|http://localhost:8000/v1|llama3.3-70b-instruct|None||Local"
+    
+    # Custom
+    PROVIDERS["custom"]="Custom|https://your-endpoint.com/v1|custom-model|Bearer|CUSTOM_API_KEY|Custom"
+    
+    # Build sorted keys array
+    PROVIDER_KEYS=($(echo "${!PROVIDERS[@]}" | tr ' ' '\n' | sort))
+}
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
+log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
+log_warning() { echo -e "${YELLOW}[WARNING]${NC} $*"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+
 get_sgpt_version() {
     ~/.local/share/pipx/venvs/shell-gpt/bin/sgpt --version 2>/dev/null || echo "unknown"
 }
 
-# Handle --menu flag - show interactive configuration menu
-handle_menu() {
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local install_script="$(dirname "$script_dir")/scripts/install.sh"
+# =============================================================================
+# MENU FUNCTIONS (Self-contained)
+# =============================================================================
+
+show_provider_menu() {
+    setup_providers
     
-    if [ -f "$install_script" ]; then
-        "$install_script" --menu
-    else
-        echo "Error: install.sh not found"
-        exit 1
-    fi
+    echo -e "${BLUE}=== Available LLM Providers ===${NC}"
+    echo ""
+    
+    local index=1
+    for key in "${PROVIDER_KEYS[@]}"; do
+        local data="${PROVIDERS[$key]}"
+        local name=$(echo "$data" | cut -d'|' -f1)
+        local model=$(echo "$data" | cut -d'|' -f3)
+        local category=$(echo "$data" | cut -d'|' -f6)
+        
+        echo -e "${GREEN}$index)${NC} $name"
+        echo "   Default Model: $model"
+        echo "   Category: $category"
+        echo ""
+        
+        index=$((index + 1))
+    done
+    
+    echo -e "${YELLOW}0)${NC} Cancel"
+    echo ""
 }
 
-# Handle --uninstall flag
+prompt_api_key() {
+    local provider_key="$1"
+    local provider_name="$2"
+    local env_var="$3"
+    local auth_format="$4"
+    
+    echo ""
+    echo -e "${YELLOW}Enter your API key for $provider_name:${NC}"
+    echo -e "Environment variable: ${GREEN}$env_var${NC}"
+    
+    if [ "$auth_format" = "None" ]; then
+        echo "This provider doesn't require an API key (local provider)"
+        return 1
+    fi
+    
+    read -r -p "API Key: " api_key
+    
+    if [ -z "$api_key" ]; then
+        log_warning "No API key provided"
+        return 1
+    fi
+    
+    # Save to auth.json
+    mkdir -p "$AUTH_DIR"
+    
+    local timestamp=$(date -Iseconds)
+    
+    # Create or update auth.json
+    if [ -f "$AUTH_FILE" ]; then
+        if command -v jq &>/dev/null; then
+            local temp_file=$(mktemp)
+            jq ".providers.\"$provider_key\" = {\"api_key\": \"$api_key\", \"updated_at\": \"$timestamp\"}" "$AUTH_FILE" > "$temp_file" && mv "$temp_file" "$AUTH_FILE"
+        else
+            echo "{\"providers\": {\"$provider_key\": {\"api_key\": \"$api_key\", \"updated_at\": \"$timestamp\"}}}" > "$AUTH_FILE"
+        fi
+    else
+        echo "{\"providers\": {\"$provider_key\": {\"api_key\": \"$api_key\", \"updated_at\": \"$timestamp\"}}}" > "$AUTH_FILE"
+    fi
+    
+    # Also export for current session
+    export "$env_var=$api_key"
+    
+    log_success "API key saved for $provider_name"
+    return 0
+}
+
+generate_config() {
+    local provider_key="$1"
+    local data="${PROVIDERS[$provider_key]}"
+    
+    local name=$(echo "$data" | cut -d'|' -f1)
+    local base_url=$(echo "$data" | cut -d'|' -f2)
+    local model=$(echo "$data" | cut -d'|' -f3)
+    local env_var=$(echo "$data" | cut -d'|' -f5)
+    
+    # Create config directory
+    mkdir -p "$CONFIG_DIR"
+    
+    # Generate config file
+    cat > "$CONFIG_FILE" << EOF
+# sgpt-wrapper configuration
+# Generated by sgpt --menu
+
+[default]
+provider = $provider_key
+api_key = \$${env_var}
+
+[$provider_key]
+model = $model
+API_BASE_URL = $base_url
+EOF
+    
+    log_success "Configuration saved to $CONFIG_FILE"
+}
+
+handle_menu() {
+    setup_providers
+    
+    echo -e "${GREEN}=== sgpt-wrapper Interactive Menu ===${NC}"
+    echo ""
+    echo "1) Select Provider"
+    echo "2) View Current Configuration"
+    echo "3) Set API Key"
+    echo "4) Reinstall/Update sgpt"
+    echo "0) Exit"
+    echo ""
+    
+    read -r -p "Select an option [0-4]: " choice
+    
+    case "$choice" in
+        1)
+            # Select Provider
+            show_provider_menu
+            echo -e "${YELLOW}Select a provider [1-${#PROVIDER_KEYS[@]}]:${NC}"
+            read -r selection
+            
+            if [ -z "$selection" ] || [ "$selection" = "0" ]; then
+                log_warning "Cancelled"
+                return
+            fi
+            
+            if [ "$selection" -ge 1 ] && [ "$selection" -le ${#PROVIDER_KEYS[@]} ]; then
+                local idx=$((selection - 1))
+                local selected_key="${PROVIDER_KEYS[$idx]}"
+                local data="${PROVIDERS[$selected_key]}"
+                local name=$(echo "$data" | cut -d'|' -f1)
+                local env_var=$(echo "$data" | cut -d'|' -f5)
+                local auth_format=$(echo "$data" | cut -d'|' -f4)
+                
+                log_info "Selected: $name"
+                
+                # Generate config
+                generate_config "$selected_key"
+                
+                # Prompt for API key
+                if [ "$auth_format" != "None" ]; then
+                    prompt_api_key "$selected_key" "$name" "$env_var" "$auth_format"
+                fi
+                
+                log_success "Provider configured!"
+            else
+                log_error "Invalid selection"
+            fi
+            ;;
+        2)
+            # View Configuration
+            echo ""
+            if [ -f "$CONFIG_FILE" ]; then
+                echo "Current Configuration:"
+                cat "$CONFIG_FILE"
+            else
+                log_warning "No configuration found"
+            fi
+            echo ""
+            if [ -f "$AUTH_FILE" ]; then
+                echo "API Keys stored: (hidden for security)"
+                if command -v jq &>/dev/null; then
+                    jq -r '.providers | keys[]' "$AUTH_FILE" 2>/dev/null || echo "  (unable to parse)"
+                else
+                    echo "  (jq not available to list)"
+                fi
+            fi
+            ;;
+        3)
+            # Set API Key
+            show_provider_menu
+            echo -e "${YELLOW}Select provider for API key [1-${#PROVIDER_KEYS[@]}]:${NC}"
+            read -r selection
+            
+            if [ -n "$selection" ] && [ "$selection" != "0" ]; then
+                if [ "$selection" -ge 1 ] && [ "$selection" -le ${#PROVIDER_KEYS[@]} ]; then
+                    local idx=$((selection - 1))
+                    local selected_key="${PROVIDER_KEYS[$idx]}"
+                    local data="${PROVIDERS[$selected_key]}"
+                    local name=$(echo "$data" | cut -d'|' -f1)
+                    local env_var=$(echo "$data" | cut -d'|' -f5)
+                    local auth_format=$(echo "$data" | cut -d'|' -f4)
+                    
+                    prompt_api_key "$selected_key" "$name" "$env_var" "$auth_format"
+                fi
+            fi
+            ;;
+        4)
+            # Reinstall
+            log_info "To reinstall, run:"
+            echo "  pipx reinstall shell-gpt"
+            echo "or"
+            echo "  pipx install shell-gpt --force"
+            ;;
+        0)
+            log_info "Exiting..."
+            ;;
+        *)
+            log_error "Invalid option"
+            ;;
+    esac
+}
+
+# =============================================================================
+# UNINSTALL FUNCTIONS (Self-contained)
+# =============================================================================
+
 handle_uninstall() {
     local dry_run=false
     local clean_keys=false
     
-    # Parse additional flags
-    shift
+    # Parse local args
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --dry-run|-d) dry_run=true ;;
@@ -40,21 +301,77 @@ handle_uninstall() {
         shift
     done
     
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local install_script="$(dirname "$script_dir")/scripts/install.sh"
+    echo -e "${RED}=== sgpt-wrapper Uninstall ===${NC}"
+    echo ""
     
-    if [ -f "$install_script" ]; then
-        local args=("--uninstall")
-        [ "$dry_run" = true ] && args+=("--dry-run")
-        [ "$clean_keys" = true ] && args+=("--clean-keys")
-        "$install_script" "${args[@]}"
+    if [ "$dry_run" = true ]; then
+        echo -e "${YELLOW}[DRY RUN]${NC} - No changes will be made"
+        echo ""
+    fi
+    
+    local items_removed=0
+    
+    # 1. Remove pipx installation
+    if command -v pipx &>/dev/null; then
+        if pipx list 2>/dev/null | grep -q "shell-gpt"; then
+            echo "[$((++items_removed))] Remove pipx installation: shell-gpt"
+            if [ "$dry_run" = false ]; then
+                pipx uninstall shell-gpt 2>/dev/null && log_success "Removed shell-gpt" || log_warning "Could not remove shell-gpt"
+            fi
+        else
+            echo "[?] shell-gpt not installed via pipx"
+        fi
     else
-        echo "Error: install.sh not found"
-        exit 1
+        echo "[?] pipx not found"
+    fi
+    
+    # 2. Remove config directory
+    if [ -d "$CONFIG_DIR" ]; then
+        echo "[$((++items_removed))] Remove config directory: $CONFIG_DIR"
+        if [ "$dry_run" = false ]; then
+            rm -rf "$CONFIG_DIR" && log_success "Removed $CONFIG_DIR" || log_warning "Could not remove $CONFIG_DIR"
+        fi
+    else
+        echo "[?] Config directory not found"
+    fi
+    
+    # 3. Remove auth data
+    if [ "$clean_keys" = true ]; then
+        if [ -d "$AUTH_DIR" ]; then
+            echo "[$((++items_removed))] Remove auth directory: $AUTH_DIR"
+            if [ "$dry_run" = false ]; then
+                rm -rf "$AUTH_DIR" && log_success "Removed $AUTH_DIR" || log_warning "Could not remove $AUTH_DIR"
+            fi
+        fi
+    else
+        echo "[=] Keeping API keys (use --clean-keys to remove)"
+    fi
+    
+    # 4. Remove shell aliases/completions
+    local shell_configs=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.config/fish/config.fish")
+    for rc in "${shell_configs[@]}"; do
+        if [ -f "$rc" ]; then
+            if grep -q "sgpt" "$rc" 2>/dev/null; then
+                echo "[$((++items_removed))] Check $rc for sgpt aliases"
+                if [ "$dry_run" = false ]; then
+                    log_warning "Please manually remove sgpt lines from $rc"
+                fi
+            fi
+        fi
+    done
+    
+    echo ""
+    if [ "$dry_run" = true ]; then
+        log_info "Dry run complete. $items_removed items would be removed."
+    else
+        log_success "Uninstall complete!"
     fi
 }
 
-# Handle --help flag
+# =============================================================================
+# HELP & VERSION
+# =============================================================================
+
 handle_help() {
     echo "sgpt-wrapper v$WRAPPER_VERSION"
     echo ""
@@ -63,6 +380,8 @@ handle_help() {
     echo "Wrapper Options:"
     echo "  --menu, -m           Show interactive configuration menu"
     echo "  --uninstall          Uninstall sgpt-wrapper"
+    echo "  --uninstall --dry-run    Show what would be removed"
+    echo "  --uninstall --clean-keys Remove API keys too"
     echo "  --help, -h           Show this help message"
     echo "  --version, -v        Show version information"
     echo ""
@@ -81,20 +400,25 @@ handle_help() {
     echo "  sgpt --shell 'Find large files'"
     echo "  sgpt --code 'Write a Fibonacci function'"
     echo "  sgpt --role senior-dev 'Explain REST APIs'"
+    echo "  sgpt --menu"
+    echo "  sgpt --uninstall"
     echo ""
     echo "For full sgpt options, run: ~/.local/share/pipx/venvs/shell-gpt/bin/sgpt --help"
     echo ""
     echo "Configuration:"
-    echo "  Config: ~/.config/shell_gpt/.sgptrc"
-    echo "  API Keys: ~/.local/share/sgpt/auth.json"
+    echo "  Config: $CONFIG_FILE"
+    echo "  API Keys: $AUTH_FILE"
 }
 
-# Handle --version flag
 handle_version() {
     local sgpt_ver
     sgpt_ver=$(get_sgpt_version)
     echo "sgpt-wrapper v$WRAPPER_VERSION | sgpt v$sgpt_ver"
 }
+
+# =============================================================================
+# MAIN EXECUTION FUNCTIONS
+# =============================================================================
 
 get_shell_mode() {
     [ "$DEFAULT_EXECUTE_SHELL_CMD" = "true" ] && echo "execute" || echo "clipboard"
@@ -173,15 +497,13 @@ User: $prompt"
     
     if [ -n "$no_interaction" ]; then
         if [ "$(get_shell_mode)" = "execute" ]; then
-            # echo "⚡ Executing: $cmd"
             eval "$cmd"
         else
-            # echo "📋 Copied: $cmd"
             echo "$cmd" | xclip -selection clipboard 2>/dev/null || echo "$cmd"
         fi
     else
         if [ "$(get_shell_mode)" = "execute" ]; then
-            echo "⚡ Executing: $cmd"
+            echo "Executing: $cmd"
             eval "$cmd"
         else
             echo ""
@@ -196,7 +518,7 @@ User: $prompt"
                      elif command -v xsel >/dev/null; then
                           echo "$cmd" | xsel --clipboard >/dev/null 2>&1
                      else
-                         echo "$cmd"
+                          echo "$cmd"
                      fi;;
                 d|D) ~/.local/share/pipx/venvs/shell-gpt/bin/sgpt --describe-shell "$cmd" ;;
                 *) echo "Aborted" ;;
@@ -235,9 +557,13 @@ User: $prompt"
     echo "Generated code:"
     echo "$code"
     echo ""
-    echo "📋 Copied to clipboard"
+    echo "Copied to clipboard"
     echo "$code" | xclip -selection clipboard 2>/dev/null || echo "$code" | xsel --clipboard 2>/dev/null || echo "$code"
 }
+
+# =============================================================================
+# MAIN ENTRY POINT
+# =============================================================================
 
 case "$1" in
     -m|--menu) shift; handle_menu "$@" ;;
