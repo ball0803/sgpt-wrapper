@@ -1,121 +1,79 @@
 # sgpt-wrapper
 
-A flexible, extensible wrapper for interacting with various LLM providers through a unified CLI interface. Features a sophisticated installer with 23+ provider support, Fish shell integration, and non-interactive installation modes.
+<p align="center">
+  <img src="https://img.shields.io/badge/LLM-Providers-23%2B-blue?style=for-the-badge&color=4F46E5" alt="23+ LLM Providers">
+  <img src="https://img.shields.io/badge/Shell-Bash%20%7C%20Fish%20%7C%20Zsh-black?style=for-the-badge&color=4F46E5" alt="Shell Support">
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License">
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-purple?style=for-the-badge" alt="Platform">
+</p>
 
-## Features
+A flexible, extensible wrapper for interacting with various LLM providers through a unified CLI interface. Features a sophisticated installer with 23+ provider support, interactive configuration menu, and per-provider API key storage.
 
-- **23+ LLM Providers**: OpenAI, MiniMax (M2.5 default), Groq, Together AI, Fireworks, DeepSeek, Mistral, and more
-- **Fish Shell Support**: Full Fish shell integration with completions
-- **Curl One-Liner Install**: curl -sL URL | bash for quick installation
-- **Non-Interactive Mode**: --no-interact --provider X --api-key Y for CI/CD
-- **Provider Selection Menu**: Interactive dropdown with 23+ providers
-- **System Prompt Injection**: Custom prompts via --role or environment variable
-- **Local LLM Support**: Ollama, LocalAI, LM Studio, vLLM
+## ✨ Features
 
-## Quick Start
+| Feature | Description |
+|---------|-------------|
+| **23+ LLM Providers** | OpenAI, MiniMax (default), Groq, Together AI, Fireworks, DeepSeek, Mistral, and more |
+| **Interactive Menu** | `--menu` / `-m` for easy provider switching and config management |
+| **API Key Storage** | Keys saved per-provider in `~/.local/share/sgpt/auth.json` |
+| **One-Liner Install** | `curl -sL URL | bash` for quick setup |
+| **CI/CD Ready** | Full non-interactive mode with `--no-interact` |
+| **Local LLM Support** | Ollama, LocalAI, LM Studio, vLLM |
+| **Fish Shell** | Full integration with completions |
 
-### Curl One-Liner (Recommended)
+## 🚀 Quick Start
 
+### One-Liner Install (Recommended)
+
+```bash
 curl -sL https://raw.githubusercontent.com/ball0803/sgpt-wrapper/main/scripts/install.sh | bash
+```
 
 ### Interactive Installer
 
-# Clone and run installer
+```bash
 git clone https://github.com/ball0803/sgpt-wrapper.git
 cd sgpt-wrapper
 ./scripts/install.sh
-
-# Follow the interactive prompts to select your provider
+```
 
 ### Non-Interactive (CI/CD)
 
-# Full non-interactive installation
+```bash
 ./scripts/install.sh --no-interact \
   --provider minimax \
   --model "MiniMax-M2.5" \
-  --api-key "your-api-key" \
-  --shell bash
+  --api-key "your-api-key"
+```
 
-# With auto pipx installation
-./scripts/install.sh --no-interact --install-pipx --provider openai --api-key "key"
+## 📖 Usage
 
-## Installer Options
+```bash
+# Basic query
+sgpt "What is the capital of France?"
 
-./scripts/install.sh [OPTIONS]
+# Code generation
+sgpt --code "Write a Python function to calculate Fibonacci"
 
-OPTIONS:
-    --help                  Show this help message
-    --dry-run               Show actions without executing
-    --no-interact           Disable interactive prompts
-    --provider <name>       Set provider directly (e.g., openai, minimax, ollama)
-    --model <name>         Set default model
-    --api-key <key>        Set API key
-    --shell <type>         Set shell type (bash, fish, zsh)
-    --install-pipx         Auto-install pipx if not found
-    --force                Force overwrite existing configs
-    --list-providers       List available providers
+# Custom system prompt
+sgpt --role senior-dev "Explain REST APIs"
 
-ENVIRONMENT VARIABLES (for curl pipe mode):
-    SGPT_PROVIDER           Provider name
-    SGPT_MODEL             Model name
-    SGPT_API_KEY           API key
+# List available providers
+./scripts/install.sh --list-providers
 
-## Supported Providers (23+)
+# Open interactive menu
+./scripts/install.sh --menu
+```
 
-### International Providers
+## ⚙️ Configuration
 
-| Provider | Default Model | Env Variable |
-|----------|---------------|--------------|
-| **MiniMax** (Default) | MiniMax-M2.5 | MINIMAX_API_KEY |
-| OpenAI | gpt-4.5 | OPENAI_API_KEY |
-| Groq | llama-3.3-70b-versatile | GROQ_API_KEY |
-| Together AI | DeepSeek-R1 | TOGETHER_API_KEY |
-| Fireworks AI | DeepSeek-V3.2 | FIREWORKS_API_KEY |
-| DeepInfra | Llama-3.3-70B | DEEPINFRA_API_KEY |
-| Anyscale | Llama-3.1-70B | ANYSCALE_API_KEY |
-| Cerebras | llama-3.1-70b-instruct | CEREBRAS_API_KEY |
-| Novita AI | MiniMax-M2.1 | NOVITA_API_KEY |
-| Mistral | Mistral-Large-3 | MISTRAL_API_KEY |
-| DeepSeek | DeepSeek-V3.2 | DEEPSEEK_API_KEY |
-
-### Chinese Providers
-
-| Provider | Default Model | Env Variable |
-|----------|---------------|--------------|
-| Zhipu AI (GLM) | GLM-5 | ZHIPU_API_KEY |
-| Alibaba (Qwen) | qwen-max | ALIBABA_API_KEY |
-| Moonshot (Kimi) | kimi-k2.5 | MOONSHOT_API_KEY |
-| iFlytek Spark | spark-v3.5 | IFLYTEK_API_KEY |
-| Tencent Hunyuan | hunyuan-turbo | TENCENT_API_KEY |
-| Baidu (Ernie) | ernie-5.0 | BAIDU_API_KEY |
-
-### Local Providers
-
-| Provider | Default Model | Notes |
-|----------|---------------|-------|
-| Ollama | llama3.3 | localhost:11434 |
-| LocalAI | llama3.2 | localhost:8080 |
-| LM Studio | llama3.3 | localhost:1234 |
-| vLLM | llama3.3-70b-instruct | localhost:8000 |
-
-### Custom Provider
-
-Use your own OpenAI-compatible endpoint:
-
-./scripts/install.sh --no-interact \
-  --provider Custom \
-  --api-key "your-key"
-
-Then manually edit ~/.config/shell_gpt/.sgptrc to set your custom base URL and model.
-
-## Configuration
-
-### Config File Location
-
+### Config Location
+```
 ~/.config/shell_gpt/.sgptrc
+```
 
 ### Config Format
-
+```ini
 [default]
 provider = minimax
 api_key = your_api_key_here
@@ -123,81 +81,116 @@ api_key = your_api_key_here
 [minimax]
 model = MiniMax-M2.5
 API_BASE_URL = https://api.minimax.io/v1
+```
 
-### Environment Variables
+### API Key Storage
+API keys are automatically saved per-provider:
+```
+~/.local/share/sgpt/auth.json
+```
 
-# Provider
-export OPENAI_API_KEY="your-key"
-export MINIMAX_API_KEY="your-key"
-export GROQ_API_KEY="your-key"
+```json
+{
+  "providers": {
+    "openai": { "api_key": "sk-xxx", "updated_at": "..." },
+    "minimax": { "api_key": "xxx", "updated_at": "..." }
+  }
+}
+```
 
-# System Prompt
-export SGPT_SYSTEM_PROMPT="You are a helpful coding assistant."
+## 🛠️ Installer Options
 
-# Custom Endpoint
-export API_BASE_URL="https://your-endpoint.com/v1"
-export DEFAULT_MODEL="your-model"
+| Flag | Description |
+|------|-------------|
+| `--help` | Show help message |
+| `--dry-run` | Show actions without executing |
+| `--no-interact` | Disable interactive prompts |
+| `--provider <name>` | Set provider directly |
+| `--model <name>` | Set default model |
+| `--api-key <key>` | Set API key |
+| `--shell <type>` | Set shell type (bash, fish, zsh) |
+| `--install-pipx` | Auto-install pipx |
+| `--force` | Force overwrite existing configs |
+| `--list-providers` | List available providers |
+| `--save-key` | Save API key to storage |
+| `--no-save-key` | Don't save API key |
+| `--clear-keys` | Clear all stored API keys |
+| `--uninstall` | Uninstall sgpt-wrapper |
+| `--clean-keys` | Remove API keys on uninstall |
+| `--menu`, `-m` | Interactive configuration menu |
 
-## Usage Examples
+## ☁️ Supported Providers (23+)
 
-### Basic Query
+### International Providers
+| Provider | Default Model | Env Variable |
+|----------|---------------|--------------|
+| **MiniMax** (Default) | MiniMax-M2.5 | `MINIMAX_API_KEY` |
+| OpenAI | gpt-4.5 | `OPENAI_API_KEY` |
+| Groq | llama-3.3-70b-versatile | `GROQ_API_KEY` |
+| Together AI | DeepSeek-R1 | `TOGETHER_API_KEY` |
+| Fireworks AI | DeepSeek-V3.2 | `FIREWORKS_API_KEY` |
+| Mistral | Mistral-Large-3 | `MISTRAL_API_KEY` |
+| DeepSeek | DeepSeek-V3.2 | `DEEPSEEK_API_KEY` |
+| DeepInfra | Llama-3.3-70B | `DEEPINFRA_API_KEY` |
+| Anyscale | Llama-3.1-70B | `ANYSCALE_API_KEY` |
+| Cerebras | llama-3.1-70b-instruct | `CEREBRAS_API_KEY` |
+| Novita AI | MiniMax-M2.1 | `NOVITA_API_KEY` |
 
-sgpt "What is the capital of France?"
+### Chinese Providers
+| Provider | Default Model | Env Variable |
+|----------|---------------|--------------|
+| Zhipu AI (GLM) | GLM-5 | `ZHIPU_API_KEY` |
+| Alibaba (Qwen) | qwen-max | `ALIBABA_API_KEY` |
+| Moonshot (Kimi) | kimi-k2.5 | `MOONSHOT_API_KEY` |
+| iFlytek Spark | spark-v3.5 | `IFLYTEK_API_KEY` |
+| Tencent Hunyuan | hunyuan-turbo | `TENCENT_API_KEY` |
+| Baidu (Ernie) | ernie-5.0 | `BAIDU_API_KEY` |
 
-### Code Generation
+### Local Providers
+| Provider | Default Model | Endpoint |
+|----------|---------------|----------|
+| Ollama | llama3.3 | localhost:11434 |
+| LocalAI | llama3.2 | localhost:8080 |
+| LM Studio | llama3.3 | localhost:1234 |
+| vLLM | llama3.3-70b-instruct | localhost:8000 |
 
-sgpt --code "Write a Python function to calculate Fibonacci"
-
-### Custom System Prompt
-
-sgpt --role senior-dev "Explain REST APIs"
-
-### List Providers
-
-./scripts/install.sh --list-providers
-
-## Shell Integration
+## 🐟 Shell Integration
 
 ### Fish Shell
-
-The installer automatically configures Fish shell:
-
-# ~/.config/fish/functions/sgpt.fish is created automatically
+Automatically configured by installer:
+```fish
 sgpt "Hello"
+```
 
 ### Bash/Zsh
-
+```bash
 # Add to ~/.bashrc or ~/.zshrc
 alias sgpt='sgpt'
 export SGPT_SYSTEM_PROMPT="Your custom prompt"
+```
 
-## Development
+## 🧪 Development
 
-### Running Tests
-
+```bash
+# Run all tests
 bash tests/run_tests.sh
-.sh --filter installer
-bash tests/runbash tests/run_tests_tests.sh --coverage
 
-### Adding a Provider
+# Run installer tests
+bash tests/test_installer.sh
 
-1. Add provider to scripts/providers.json
-2. Add configuration function to scripts/install.sh
-3. Update templates/sgptrc.template
-4. Add tests
+# Test installer
+./scripts/install.sh --help
+```
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
 ### pipx not found
-
-# Auto-install pipx
+```bash
 ./scripts/install.sh --install-pipx
-
-# Or manually
-pip install pipx
+```
 
 ### Connection refused (Local providers)
-
+```bash
 # Ollama
 ollama serve
 
@@ -206,27 +199,25 @@ ollama serve
 
 # LocalAI
 docker run -d -p 8080:8080 quay.io/go-skynet/local-ai:latest
-
-### Invalid API Key
-
-Check your provider's API key format. Some providers require specific prefixes:
-
-# Groq keys start with gho_
-# OpenAI keys start with sk-
+```
 
 ### Fish shell issues
+```bash
+fish -n ~/.config/fish/config.fish  # Validate syntax
+./scripts/install.sh --shell fish   # Re-run installer
+```
 
-# Validate Fish syntax
-fish -n ~/.config/fish/config.fish
+## 📄 License
 
-# Re-run installer for Fish
-./scripts/install.sh --shell fish
+MIT License - see [LICENSE](LICENSE) file for details.
 
-## License
+## 🔗 Links
 
-MIT License - see LICENSE file for details.
-
-## Links
-
-- GitHub: https://github.com/ball0803/sgpt-wrapper
-- Issues: https://github.com/ball0803/sgpt-wrapper/issues
+<p align="center">
+  <a href="https://github.com/ball0803/sgpt-wrapper">
+    <img src="https://img.shields.io/badge/GitHub-Repo-black?style=for-the-badge&logo=github" alt="GitHub">
+  </a>
+  <a href="https://github.com/ball0803/sgpt-wrapper/issues">
+    <img src="https://img.shields.io/badge/Issues-Report-red?style=for-the-badge&logo=github" alt="Issues">
+  </a>
+</p>
