@@ -94,7 +94,7 @@
       "name": "MiniMax",
       "base_url": "https://api.minimax.io/v1",
       "default_model": "MiniMax-M2.5",
-      "alternatives": ["MiniMax-M2.5-Lightning", "MiniMax-M2.1", "MiniMax-M2", "Speech-2.6"],
+      "alternatives": ["MiniMax-M2.5-highspeed", "MiniMax-M2.1", "MiniMax-M2", "Speech-2.6"],
       "auth_format": "Bearer",
       "auth_env_var": "MINIMAX_API_KEY",
       "category": "International",
