@@ -1,647 +1,1022 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # sgpt-wrapper Installer
-# A sophisticated, idempotent bash installer for shell-gpt with interactive setup
+# A comprehensive installer with Fish shell support, curl one-liner mode,
+# pipx handling, and interactive provider selection.
 #
 
-set -e
+set -euo pipefail
 
-# Colors for output
+# =============================================================================
+# COLORS
+# =============================================================================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-CYAN='\033[0;36m'
 NC='\033[0m' # No Color
-BOLD='\033[1m'
 
-# Configuration
-WRAPPER_SOURCE="${BASH_SOURCE[0]%/*}/../bin/sgpt"
-INSTALL_DIR="$HOME/bin"
-CONFIG_DIR="$HOME/.config/shell_gpt"
+# =============================================================================
+# SCRIPT CONFIGURATION
+# =============================================================================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROVIDERS_JSON="$SCRIPT_DIR/providers.json"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/shell_gpt"
 CONFIG_FILE="$CONFIG_DIR/.sgptrc"
 
-# Provider endpoints (from requirements)
-declare -A PROVIDER_ENDPOINTS=(
-    ["openai"]="https://api.openai.com/v1"
-    ["minimax"]="https://api.minimax.io/v1"
-    ["ollama"]="http://localhost:11434/v1"
-    ["together"]="https://api.together.ai/v1"
-    ["groq"]="https://api.groq.com/openai/v1"
-)
-
-declare -A PROVIDER_MODELS=(
-    ["openai"]="gpt-4"
-    ["minimax"]="MiniMax-M2.1"
-    ["ollama"]="llama2"
-    ["together"]="meta-llama/Llama-2-70b-chat-hf"
-    ["groq"]="llama2-70b-8192"
-)
-
-declare -A PROVIDER_KEY_VARS=(
-    ["openai"]="OPENAI_API_KEY"
-    ["minimax"]="MINIMAX_API_KEY"
-    ["ollama"]="OLLAMA_API_KEY"
-    ["together"]="TOGETHER_API_KEY"
-    ["groq"]="GROQ_API_KEY"
-)
-
-declare -A PROVIDER_URL_VARS=(
-    ["openai"]="OPENAI_API_BASE_URL"
-    ["minimax"]="MINIMAX_API_BASE_URL"
-    ["ollama"]="OLLAMA_API_BASE_URL"
-    ["together"]="TOGETHER_API_BASE_URL"
-    ["groq"]="GROQ_API_BASE_URL"
-)
-
-declare -A PROVIDER_MODEL_VARS=(
-    ["openai"]="OPENAI_MODEL"
-    ["minimax"]="MINIMAX_MODEL"
-    ["ollama"]="OLLAMA_MODEL"
-    ["together"]="TOGETHER_MODEL"
-    ["groq"]="GROQ_MODEL"
-)
+# =============================================================================
+# GLOBAL FLAGS
+# =============================================================================
+DRY_RUN=false
+NO_INTERACT=false
+SELECTED_PROVIDER=""
+SELECTED_MODEL=""
+SELECTED_API_KEY=""
+SELECTED_SHELL=""
+AUTO_INSTALL_PIPX=false
+FORCE_OVERWRITE=false
 
 # =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
 
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    echo -e "${BLUE}[INFO]${NC} $*"
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}[SUCCESS]${NC} $*"
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[WARNING]${NC} $*"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $*" >&2
 }
 
-log_header() {
-    echo ""
-    echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${CYAN}  $1${NC}"
-    echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
-    echo ""
-}
-
-# Detect current shell
-detect_shell() {
-    if [[ -n "$BASH_VERSION" ]]; then
-        echo "bash"
-    elif [[ -n "$ZSH_VERSION" ]]; then
-        echo "zsh"
-    elif [[ -n "$FISH_VERSION" ]]; then
-        echo "fish"
-    else
-        echo "unknown"
+dry_run() {
+    if [ "$DRY_RUN" = true ]; then
+        echo -e "${YELLOW}[DRY-RUN]${NC} $*"
     fi
 }
 
-# Get shell config file path
-get_shell_config() {
-    local shell="$1"
-    case "$shell" in
-        bash)
-            if [[ -n "$BASHRC" ]]; then
-                echo "$BASHRC"
-            elif [[ -f "$HOME/.bashrc" ]]; then
-                echo "$HOME/.bashrc"
-            else
-                echo "$HOME/.profile"
+# =============================================================================
+# FISH SHELL SUPPORT (Task 4)
+# =============================================================================
+
+# Detect if fish is installed
+detect_fish() {
+    if command -v fish &>/dev/null; then
+        log_info "Fish shell detected: $(command -v fish)"
+        return 0
+    else
+        log_warning "Fish shell not found"
+        return 1
+    fi
+}
+
+# Validate fish syntax
+validate_fish_syntax() {
+    local file="$1"
+    if command -v fish &>/dev/null; then
+        if fish -n "$file" 2>/dev/null; then
+            log_success "Fish syntax validation passed: $file"
+            return 0
+        else
+            log_error "Fish syntax error in: $file"
+            return 1
+        fi
+    else
+        log_warning "Cannot validate fish syntax: fish not installed"
+        return 0
+    fi
+}
+
+# Install fish configuration
+install_fish_config() {
+    local fish_config_dir="$HOME/.config/fish"
+    local fish_functions_dir="$fish_config_dir/functions"
+    local fish_completions_dir="$fish_config_dir/completions"
+
+    dry_run "Installing Fish shell configuration..."
+
+    # Create directories
+    mkdir -p "$fish_functions_dir"
+    mkdir -p "$fish_completions_dir"
+
+    # Create Fish function file
+    local fish_function_file="$fish_functions_dir/sgpt.fish"
+    if [ -f "$fish_function_file" ] && [ "$FORCE_OVERWRITE" = false ]; then
+        log_warning "Fish function already exists: $fish_function_file (use --force to overwrite)"
+    else
+        dry_run "Creating Fish function: $fish_function_file"
+        if [ "$DRY_RUN" = false ]; then
+            cat > "$fish_function_file" << 'FISHEOF'
+# Fish shell function for sgpt
+# Auto-generated by sgpt-wrapper installer
+
+function sgpt
+    set -l args $argv
+    
+    # Check for API key in environment
+    if not set -q SGPT_API_KEY
+        and not set -q OPENAI_API_KEY
+        and not set -q MINIMAX_API_KEY
+        and not set -q OLLAMA_API_KEY
+        and not set -q GROQ_API_KEY
+        and not set -q TOGETHER_API_KEY
+        echo "Warning: No API key found in environment variables" >&2
+    end
+    
+    # Call the actual sgpt command
+    if type -q sgpt-wrapper
+        sgpt-wrapper $args
+    else if type -q sgpt
+        sgpt $args
+    else
+        echo "Error: sgpt command not found" >&2
+        return 1
+    end
+end
+
+# Aliases for common operations
+function sgpt-bash
+    sgpt --shell bash $argv
+end
+
+function sgpt-fish
+    sgpt --shell fish $argv
+end
+
+function sgpt-code
+    sgpt --role code $argv
+end
+FISHEOF
+            validate_fish_syntax "$fish_function_file"
+            log_success "Created Fish function: $fish_function_file"
+        fi
+    fi
+
+    # Create Fish completion file
+    local fish_completion_file="$fish_completions_dir/sgpt.fish"
+    if [ -f "$fish_completion_file" ] && [ "$FORCE_OVERWRITE" = false ]; then
+        log_warning "Fish completion already exists: $fish_completion_file"
+    else
+        dry_run "Creating Fish completion: $fish_completion_file"
+        if [ "$DRY_RUN" = false ]; then
+            cat > "$fish_completion_file" << 'FISHEOF'
+# Fish shell completion for sgpt
+# Auto-generated by sgpt-wrapper installer
+
+complete -c sgpt -f -l help -d 'Show help message'
+complete -c sgpt -f -l version -d 'Show version'
+complete -c sgpt -f -l install -d 'Run installation'
+complete -c sgpt -f -l install-completion -d 'Install shell completions'
+complete -c sgpt -f -l config -d 'Edit configuration'
+complete -c sgpt -f -l list-providers -d 'List available providers'
+complete -c sgpt -f -l provider -d 'Set provider' -a 'openai minimax ollama together groq'
+complete -c sgpt -f -l model -d 'Set model'
+complete -c sgpt -f -l role -d 'Set system role'
+complete -c sgpt -f -l shell -d 'Generate shell command' -a 'bash fish zsh'
+complete -c sgpt -f -l code -d 'Generate code'
+complete -c sgpt -f -l chat -d 'Start chat mode'
+complete -c sgpt -f -s s -l stream -d 'Stream response'
+complete -c sgpt -f -s m -l model -d 'Specify model'
+complete -c sgpt -f -s p -l provider -d 'Specify provider'
+complete -c sgpt -f -n '__fish_use_subcommand' -a 'help' -d 'Show help'
+FISHEOF
+            validate_fish_syntax "$fish_completion_file"
+            log_success "Created Fish completion: $fish_completion_file"
+        fi
+    fi
+
+    # Add to fish config if not already present
+    local fish_config="$fish_config_dir/config.fish"
+    if [ ! -f "$fish_config" ]; then
+        dry_run "Creating Fish config: $fish_config"
+        if [ "$DRY_RUN" = false ]; then
+            mkdir -p "$fish_config_dir"
+            cat > "$fish_config" << 'FISHEOF'
+# Fish shell configuration for sgpt-wrapper
+# Auto-generated by sgpt-wrapper installer
+
+# Add local bin to PATH
+if not contains $HOME/.local/bin $PATH
+    set -gx PATH $HOME/.local/bin $PATH
+end
+
+# Set default provider
+# set -gx SGPT_PROVIDER openai
+FISHEOF
+            log_success "Created Fish config: $fish_config"
+        fi
+    else
+        if ! grep -q "sgpt" "$fish_config" 2>/dev/null; then
+            dry_run "Appending to Fish config: $fish_config"
+            if [ "$DRY_RUN" = false ]; then
+                cat >> "$fish_config" << 'FISHEOF'
+
+# sgpt-wrapper configuration
+if not contains $HOME/.local/bin $PATH
+    set -gx PATH $HOME/.local/bin $PATH
+end
+FISHEOF
+                log_success "Updated Fish config: $fish_config"
+            fi
+        else
+            log_info "Fish config already contains sgpt configuration"
+        fi
+    fi
+}
+
+# =============================================================================
+# CURL ONE-LINER MODE (Task 5)
+# =============================================================================
+
+# Detect if running from pipe (curl ... | bash)
+is_curl_mode() {
+    # Check if stdin is not a TTY (likely piped)
+    if [ ! -t 0 ]; then
+        return 0
+    fi
+    return 1
+}
+
+# Detect if running in interactive mode
+is_interactive() {
+    if [ -t 1 ]; then
+        return 0
+    fi
+    return 1
+}
+
+# Handle curl one-liner mode
+handle_curl_mode() {
+    if is_curl_mode; then
+        log_info "Detected curl pipe mode (non-interactive)"
+        
+        # Read environment variables from input
+        while IFS='=' read -r key value; do
+            if [[ -n "$key" && "$key" != \#* ]]; then
+                case "$key" in
+                    SGPT_PROVIDER) SELECTED_PROVIDER="$value" ;;
+                    SGPT_MODEL) SELECTED_MODEL="$value" ;;
+                    SGPT_API_KEY) SELECTED_API_KEY="$value" ;;
+                esac
+            fi
+        done
+        
+        # Auto-enable non-interactive mode
+        if [ "$NO_INTERACT" = false ]; then
+            NO_INTERACT=true
+            log_info "Auto-enabled non-interactive mode for curl pipe"
+        fi
+    fi
+}
+
+# =============================================================================
+# PIPX HANDLING (Task 6)
+# =============================================================================
+
+# Check if pipx is installed
+check_pipx() {
+    if command -v pipx &>/dev/null; then
+        log_success "pipx is installed: $(command -v pipx)"
+        return 0
+    else
+        log_warning "pipx is not installed"
+        return 1
+    fi
+}
+
+# Offer to install pipx
+offer_pipx_install() {
+    if check_pipx; then
+        return 0
+    fi
+    
+    if [ "$AUTO_INSTALL_PIPX" = true ]; then
+        install_pipx
+        return $?
+    fi
+    
+    if [ "$NO_INTERACT" = true ]; then
+        log_warning "Cannot install pipx in non-interactive mode without --install-pipx"
+        return 1
+    fi
+    
+    echo -e "${YELLOW}pipx is required to install sgpt-wrapper.${NC}"
+    echo "Would you like to install pipx now? [y/N]"
+    read -r response
+    
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        install_pipx
+    else
+        log_warning "Skipping pipx installation"
+        return 1
+    fi
+}
+
+# Install pipx using appropriate package manager
+install_pipx() {
+    log_info "Installing pipx..."
+    
+    local install_method=""
+    
+    # Try to detect package manager
+    if command -v apt-get &>/dev/null; then
+        install_method="apt"
+    elif command -v dnf &>/dev/null; then
+        install_method="dnf"
+    elif command -v pacman &>/dev/null; then
+        install_method="pacman"
+    elif command -v brew &>/dev/null; then
+        install_method="brew"
+    elif command -v pip &>/dev/null; then
+        install_method="pip"
+    fi
+    
+    case "$install_method" in
+        apt)
+            dry_run "Installing pipx via apt..."
+            if [ "$DRY_RUN" = false ]; then
+                sudo apt-get update && sudo apt-get install -y pipx
             fi
             ;;
-        zsh)
-            if [[ -n "$ZDOTDIR" ]]; then
-                echo "$ZDOTDIR/.zshrc"
-            elif [[ -f "$HOME/.zshrc" ]]; then
-                echo "$HOME/.zshrc"
-            else
-                echo "$HOME/.zprofile"
+        dnf)
+            dry_run "Installing pipx via dnf..."
+            if [ "$DRY_RUN" = false ]; then
+                sudo dnf install -y pipx
             fi
             ;;
-        fish)
-            if [[ -n "$XDG_CONFIG_HOME" ]]; then
-                echo "$XDG_CONFIG_HOME/fish/config.fish"
-            else
-                echo "$HOME/.config/fish/config.fish"
+        pacman)
+            dry_run "Installing pipx via pacman..."
+            if [ "$DRY_RUN" = false ]; then
+                sudo pacman -S --noconfirm python-pipx
+            fi
+            ;;
+        brew)
+            dry_run "Installing pipx via brew..."
+            if [ "$DRY_RUN" = false ]; then
+                brew install pipx
+            fi
+            ;;
+        pip)
+            dry_run "Installing pipx via pip..."
+            if [ "$DRY_RUN" = false ]; then
+                pip install --user pipx
+                pipx ensurepath
             fi
             ;;
         *)
-            echo "$HOME/.profile"
+            log_error "Could not detect package manager. Please install pipx manually."
+            return 1
+            ;;
+    esac
+    
+    log_success "pipx installed successfully"
+}
+
+# =============================================================================
+# PROVIDER SELECTION MENU (Task 7)
+# =============================================================================
+
+# Parse providers from JSON
+get_providers() {
+    if [ ! -f "$PROVIDERS_JSON" ]; then
+        log_error "providers.json not found: $PROVIDERS_JSON"
+        return 1
+    fi
+    
+    if ! command -v jq &>/dev/null; then
+        log_error "jq is required to parse providers.json"
+        return 1
+    fi
+    
+    jq -r '.providers[] | "\(.name)|\(.default_model)|\(.category)"' "$PROVIDERS_JSON"
+}
+
+# Display provider menu
+display_provider_menu() {
+    echo -e "${BLUE}=== Available LLM Providers ===${NC}"
+    echo ""
+    
+    local index=1
+    while IFS='|' read -r name model category; do
+        echo -e "${GREEN}$index)${NC} $name"
+        echo "   Default Model: $model"
+        echo "   Category: $category"
+        echo ""
+        index=$((index + 1))
+    done < <(get_providers)
+    
+    echo -e "${YELLOW}0)${NC} Cancel / Skip"
+    echo ""
+}
+
+# Select provider interactively
+select_provider() {
+    # If provider already specified, verify it exists
+    if [ -n "$SELECTED_PROVIDER" ]; then
+        local provider_lower=$(echo "$SELECTED_PROVIDER" | tr '[:upper:]' '[:lower:]')
+        if jq -e ".providers[] | select(.name | ascii_downcase == \"$provider_lower\")" "$PROVIDERS_JSON" &>/dev/null; then
+            log_info "Using specified provider: $SELECTED_PROVIDER"
+            return 0
+        else
+            log_error "Unknown provider: $SELECTED_PROVIDER"
+            log_info "Use --list-providers to see available providers"
+            return 1
+        fi
+    fi
+    
+    # Non-interactive mode: use default
+    if [ "$NO_INTERACT" = true ]; then
+        SELECTED_PROVIDER="openai"
+        log_info "Non-interactive mode: using default provider: $SELECTED_PROVIDER"
+        return 0
+    fi
+    
+    # Interactive selection
+    display_provider_menu
+    
+    echo -e "${YELLOW}Select a provider [1-22]:${NC}"
+    read -r selection
+    
+    if [ "$selection" = "0" ] || [ -z "$selection" ]; then
+        log_warning "Provider selection cancelled"
+        return 1
+    fi
+    
+    local provider_name
+    provider_name=$(jq -r ".providers[$((selection - 1))].name" "$PROVIDERS_JSON" 2>/dev/null)
+    
+    if [ "$provider_name" = "null" ] || [ -z "$provider_name" ]; then
+        log_error "Invalid selection"
+        return 1
+    fi
+    
+    SELECTED_PROVIDER="$provider_name"
+    log_success "Selected provider: $SELECTED_PROVIDER"
+}
+
+# Get provider details by name
+get_provider_detail() {
+    local provider="$1"
+    local detail="$2"
+    jq -r ".providers[] | select(.name | ascii_downcase == \"$provider\" | ascii_downcase) | .$detail" "$PROVIDERS_JSON"
+}
+
+# =============================================================================
+# PROVIDER CONFIGURATION FUNCTIONS (Task 8)
+# =============================================================================
+
+configure_openai() {
+    cat << EOF
+# OpenAI Configuration
+OPENAI_API_KEY=${SELECTED_API_KEY:-}
+OPENAI_API_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=${SELECTED_MODEL:-gpt-4o}
+EOF
+}
+
+configure_azure() {
+    cat << EOF
+# Azure OpenAI Configuration
+AZURE_OPENAI_API_KEY=${SELECTED_API_KEY:-}
+AZURE_OPENAI_API_BASE_URL=https://\${AZURE_RESOURCE}.openai.azure.com/openai/
+AZURE_OPENAI_DEPLOYMENT=\${AZURE_DEPLOYMENT_NAME}
+AZURE_OPENAI_MODEL=${SELECTED_MODEL:-gpt-4o}
+EOF
+}
+
+configure_groq() {
+    cat << EOF
+# Groq Configuration
+GROQ_API_KEY=${SELECTED_API_KEY:-}
+GROQ_API_BASE_URL=https://api.groq.com/openai/v1
+GROQ_MODEL=${SELECTED_MODEL:-llama-3.3-70b-versatile}
+EOF
+}
+
+configure_together() {
+    cat << EOF
+# Together AI Configuration
+TOGETHER_API_KEY=${SELECTED_API_KEY:-}
+TOGETHER_API_BASE_URL=https://api.together.ai/v1
+TOGETHER_MODEL=${SELECTED_MODEL:-meta-llama/Llama-3.3-70B-Instruct}
+EOF
+}
+
+configure_fireworks() {
+    cat << EOF
+# Fireworks AI Configuration
+FIREWORKS_API_KEY=${SELECTED_API_KEY:-}
+FIREWORKS_API_BASE_URL=https://api.fireworks.ai/inference/v1
+FIREWORKS_MODEL=${SELECTED_MODEL:-llama-v3-70b-instruct}
+EOF
+}
+
+configure_deepinfra() {
+    cat << EOF
+# DeepInfra Configuration
+DEEPINFRA_API_KEY=${SELECTED_API_KEY:-}
+DEEPINFRA_API_BASE_URL=https://api.deepinfra.com/v1/openai
+DEEPINFRA_MODEL=${SELECTED_MODEL:-Llama-2-70b-chat-hf}
+EOF
+}
+
+configure_anyscale() {
+    cat << EOF
+# Anyscale Configuration
+ANYSCALE_API_KEY=${SELECTED_API_KEY:-}
+ANYSCALE_API_BASE_URL=https://api.endpoints.anyscale.com/v1
+ANYSCALE_MODEL=${SELECTED_MODEL:-Llama-2-7b-chat-hf}
+EOF
+}
+
+configure_cerebras() {
+    cat << EOF
+# Cerebras Configuration
+CEREBRAS_API_KEY=${SELECTED_API_KEY:-}
+CEREBRAS_API_BASE_URL=https://api.cerebras.ai/v1
+CEREBRAS_MODEL=${SELECTED_MODEL:-llama-3.1-70b-instruct}
+EOF
+}
+
+configure_novita() {
+    cat << EOF
+# Novita AI Configuration
+NOVITA_API_KEY=${SELECTED_API_KEY:-}
+NOVITA_API_BASE_URL=https://api.novita.ai/v3/openai
+NOVITA_MODEL=${SELECTED_MODEL:-llama-3.1-70b-instruct}
+EOF
+}
+
+configure_minimax() {
+    cat << EOF
+# MiniMax Configuration
+MINIMAX_API_KEY=${SELECTED_API_KEY:-}
+MINIMAX_API_BASE_URL=https://api.minimax.io/v1
+MINIMAX_MODEL=${SELECTED_MODEL:-MiniMax-M2.1}
+EOF
+}
+
+configure_ollama() {
+    cat << EOF
+# Ollama Configuration (Local)
+OLLAMA_API_KEY=not_needed
+OLLAMA_API_BASE_URL=http://localhost:11434/v1
+OLLAMA_MODEL=${SELECTED_MODEL:-llama3}
+EOF
+}
+
+configure_mistral() {
+    cat << EOF
+# Mistral Configuration
+MISTRAL_API_KEY=${SELECTED_API_KEY:-}
+MISTRAL_API_BASE_URL=https://api.mistral.ai/v1
+MISTRAL_MODEL=${SELECTED_MODEL:-mistral-large-latest}
+EOF
+}
+
+configure_deepseek() {
+    cat << EOF
+# DeepSeek Configuration
+DEEPSEEK_API_KEY=${SELECTED_API_KEY:-}
+DEEPSEEK_API_BASE_URL=https://api.deepseek.com/v1
+DEEPSEEK_MODEL=${SELECTED_MODEL:-deepseek-chat}
+EOF
+}
+
+configure_zhipu() {
+    cat << EOF
+# Zhipu AI (GLM) Configuration
+ZHIPU_API_KEY=${SELECTED_API_KEY:-}
+ZHIPU_API_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+ZHIPU_MODEL=${SELECTED_MODEL:-glm-4}
+EOF
+}
+
+configure_alibaba() {
+    cat << EOF
+# Alibaba Tongyi (Qwen) Configuration
+ALIBABA_API_KEY=${SELECTED_API_KEY:-}
+ALIBABA_API_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+ALIBABA_MODEL=${SELECTED_MODEL:-qwen-max}
+EOF
+}
+
+configure_moonshot() {
+    cat << EOF
+# Moonshot AI (Kimi) Configuration
+MOONSHOT_API_KEY=${SELECTED_API_KEY:-}
+MOONSHOT_API_BASE_URL=https://api.moonshot.cn/v1
+MOONSHOT_MODEL=${SELECTED_MODEL:-kimi-chat}
+EOF
+}
+
+configure_iflytek() {
+    cat << EOF
+# iFlytek Spark Configuration
+IFLYTEK_API_KEY=${SELECTED_API_KEY:-}
+IFLYTEK_API_BASE_URL=https://spark-api.xf-yun.com/v1
+IFLYTEK_MODEL=${SELECTED_MODEL:-spark-v3.5}
+EOF
+}
+
+configure_tencent() {
+    cat << EOF
+# Tencent Hunyuan Configuration
+TENCENT_API_KEY=${SELECTED_API_KEY:-}
+TENCENT_API_SECRET=${TENCENT_API_SECRET:-}
+TENCENT_API_BASE_URL=https://hunyuan.cloud.tencent.com/openapi
+TENCENT_MODEL=${SELECTED_MODEL:-hunyuan-pro}
+EOF
+}
+
+configure_baidu() {
+    cat << EOF
+# Baidu Wenxin Configuration
+BAIDU_API_KEY=${SELECTED_API_KEY:-}
+BAIDU_API_SECRET=${BAIDU_API_SECRET:-}
+BAIDU_API_BASE_URL=https://aip.baidubce.com/rpc/2.0/ai_custom/v1
+BAIDU_MODEL=${SELECTED_MODEL:-ernie-4.0-8k}
+EOF
+}
+
+configure_localai() {
+    cat << EOF
+# LocalAI Configuration
+LOCALAI_API_KEY=not_needed
+LOCALAI_API_BASE_URL=http://localhost:8080/v1
+LOCALAI_MODEL=${SELECTED_MODEL:-llama-2-7b}
+EOF
+}
+
+configure_lmstudio() {
+    cat << EOF
+# LM Studio Configuration
+LMSTUDIO_API_KEY=not_needed
+LMSTUDIO_API_BASE_URL=http://localhost:1234/v1
+LMSTUDIO_MODEL=${SELECTED_MODEL:-llama-3-8b-instruct}
+EOF
+}
+
+configure_vllm() {
+    cat << EOF
+# vLLM Configuration
+VLLM_API_KEY=not_needed
+VLLM_API_BASE_URL=http://localhost:8000/v1
+VLLM_MODEL=${SELECTED_MODEL:-llama-2-7b}
+EOF
+}
+
+# Map provider name to configuration function
+configure_provider() {
+    local provider="$1"
+    local provider_lower=$(echo "$provider" | tr '[:upper:]' '[:lower:]')
+    
+    case "$provider_lower" in
+        openai)           configure_openai ;;
+        azure)            configure_azure ;;
+        azure_openai)     configure_azure ;;
+        groq)             configure_groq ;;
+        together)         configure_together ;;
+        together_ai)     configure_together ;;
+        fireworks)        configure_fireworks ;;
+        fireworks_ai)    configure_fireworks ;;
+        deepinfra)        configure_deepinfra ;;
+        anyscale)         configure_anyscale ;;
+        cerebras)         configure_cerebras ;;
+        novita)           configure_novita ;;
+        novita_ai)        configure_novita ;;
+        minimax)          configure_minimax ;;
+        ollama)           configure_ollama ;;
+        mistral)          configure_mistral ;;
+        deepseek)         configure_deepseek ;;
+        zhipu)            configure_zhipu ;;
+        zhipu_ai)         configure_zhipu ;;
+        glm)              configure_zhipu ;;
+        alibaba)          configure_alibaba ;;
+        tongyi)           configure_alibaba ;;
+        qwen)             configure_alibaba ;;
+        moonshot)         configure_moonshot ;;
+        moonshot_ai)      configure_moonshot ;;
+        kimi)             configure_moonshot ;;
+        iflytek)          configure_iflytek ;;
+        iflytek_spark)    configure_iflytek ;;
+        spark)            configure_iflytek ;;
+        tencent)          configure_tencent ;;
+        hunyuan)          configure_tencent ;;
+        baidu)            configure_baidu ;;
+        wenxin)           configure_baidu ;;
+        ernie)            configure_baidu ;;
+        localai)          configure_localai ;;
+        lmstudio)         configure_lmstudio ;;
+        vllm)             configure_vllm ;;
+        *)
+            log_error "Unknown provider: $provider"
+            return 1
             ;;
     esac
 }
 
-# Prompt for yes/no
-prompt_yes_no() {
-    local prompt="$1"
-    local default="${2:-n}"
-    local yn
+# =============================================================================
+# MAIN INSTALLATION FUNCTIONS
+# =============================================================================
+
+# Create configuration directory
+ensure_config_dir() {
+    if [ ! -d "$CONFIG_DIR" ]; then
+        dry_run "Creating config directory: $CONFIG_DIR"
+        if [ "$DRY_RUN" = false ]; then
+            mkdir -p "$CONFIG_DIR"
+            log_success "Created config directory: $CONFIG_DIR"
+        fi
+    else
+        log_info "Config directory already exists: $CONFIG_DIR"
+    fi
+}
+
+# Backup existing config
+backup_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        local backup_file="${CONFIG_FILE}.backup.$(date +%Y%m%d%H%M%S)"
+        dry_run "Backing up existing config to: $backup_file"
+        if [ "$DRY_RUN" = false ]; then
+            cp "$CONFIG_FILE" "$backup_file"
+            log_success "Backed up config to: $backup_file"
+        fi
+    fi
+}
+
+# Generate configuration file
+generate_config() {
+    ensure_config_dir
+    backup_config
     
-    while true; do
-        if [[ "$default" == "y" ]]; then
-            read -p "$prompt [Y/n]: " yn
-            [[ -z "$yn" ]] && yn="y"
+    if [ -z "$SELECTED_PROVIDER" ]; then
+        SELECTED_PROVIDER="openai"
+    fi
+    
+    dry_run "Generating config for provider: $SELECTED_PROVIDER"
+    
+    if [ "$DRY_RUN" = false ]; then
+        # Start with template if it exists
+        local template_file="$PROJECT_ROOT/templates/sgptrc.template"
+        if [ -f "$template_file" ]; then
+            cp "$template_file" "$CONFIG_FILE"
         else
-            read -p "$prompt [y/N]: " yn
-            [[ -z "$yn" ]] && yn="n"
+            touch "$CONFIG_FILE"
         fi
         
-        case "$yn" in
-            [Yy]) return 0 ;;
-            [Nn]) return 1 ;;
-            *) echo "Please answer y or n" ;;
+        # Append/overwrite provider config
+        configure_provider "$SELECTED_PROVIDER" >> "$CONFIG_FILE"
+        
+        # Set default provider
+        echo "" >> "$CONFIG_FILE"
+        echo "# Default Provider" >> "$CONFIG_FILE"
+        echo "DEFAULT_PROVIDER=$(echo $SELECTED_PROVIDER | tr '[:upper:]' '[:lower:]')" >> "$CONFIG_FILE"
+        
+        log_success "Generated config: $CONFIG_FILE"
+    fi
+}
+
+# Install the sgpt command
+install_sgpt() {
+    local install_method=""
+    
+    if check_pipx; then
+        install_method="pipx"
+    elif command -v pip &>/dev/null; then
+        install_method="pip"
+    else
+        log_error "Neither pipx nor pip is available"
+        return 1
+    fi
+    
+    dry_run "Installing sgpt via $install_method..."
+    
+    if [ "$DRY_RUN" = false ]; then
+        case "$install_method" in
+            pipx)
+                cd "$PROJECT_ROOT"
+                pipx install .
+                pipx ensurepath
+                ;;
+            pip)
+                cd "$PROJECT_ROOT"
+                pip install --user -e .
+                ;;
+        esac
+        log_success "Installed sgpt command"
+    fi
+}
+
+# Install shell completions
+install_completions() {
+    local shell="$SELECTED_SHELL"
+    
+    if [ -z "$shell" ]; then
+        # Detect current shell
+        shell="${SHELL##*/}"
+    fi
+    
+    case "$shell" in
+        fish)
+            install_fish_config
+            ;;
+        bash)
+            # Bash completions are typically handled by the system
+            log_info "Bash completions - ensuring sgpt is in PATH"
+            if [ -d "$HOME/.local/bin" ]; then
+                if ! grep -q ".local/bin" "$HOME/.bashrc" 2>/dev/null; then
+                    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+                fi
+            fi
+            ;;
+        zsh)
+            # Zsh completions
+            log_info "Zsh completions - ensuring sgpt is in PATH"
+            if [ -d "$HOME/.local/bin" ]; then
+                if ! grep -q ".local/bin" "$HOME/.zshrc" 2>/dev/null; then
+                    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
+                fi
+            fi
+            ;;
+        *)
+            log_warning "Unknown shell: $shell"
+            ;;
+    esac
+}
+
+# =============================================================================
+# COMMAND LINE PARSING (Task 8b)
+# =============================================================================
+
+show_help() {
+    cat << EOF
+sgpt-wrapper Installer
+
+Usage: $0 [OPTIONS]
+
+OPTIONS:
+    --help                  Show this help message
+    --dry-run               Show actions without executing
+    --no-interact           Disable interactive prompts
+    --provider <name>       Set provider directly (e.g., openai, minimax, ollama)
+    --model <name>         Set default model
+    --api-key <key>        Set API key
+    --shell <type>         Set shell type (bash, fish, zsh)
+    --install-pipx         Auto-install pipx if not found
+    --force                Force overwrite existing configs
+    --list-providers       List available providers
+
+EXAMPLES:
+    $0 --provider openai --model gpt-4
+    $0 --no-interact --provider minimax
+    $0 --install-pipx --shell fish
+    SGPT_PROVIDER=openai SGPT_MODEL=gpt-4 $0
+
+ENVIRONMENT VARIABLES (for curl pipe mode):
+    SGPT_PROVIDER           Provider name
+    SGPT_MODEL             Model name
+    SGPT_API_KEY           API key
+
+SUPPORTED PROVIDERS:
+    OpenAI, Azure OpenAI, Groq, Together AI, Fireworks AI,
+    DeepInfra, Anyscale, Cerebras, Novita AI, MiniMax,
+    Ollama, Mistral, DeepSeek, Zhipu AI, Alibaba Tongyi,
+    Moonshot AI, iFlytek Spark, Tencent Hunyuan, Baidu Wenxin,
+    LocalAI, LM Studio, vLLM
+
+EOF
+}
+
+list_providers() {
+    if [ ! -f "$PROVIDERS_JSON" ]; then
+        log_error "providers.json not found"
+        return 1
+    fi
+    
+    if ! command -v jq &>/dev/null; then
+        log_error "jq is required to list providers"
+        return 1
+    fi
+    
+    echo -e "${BLUE}=== Available LLM Providers ===${NC}"
+    echo ""
+    jq -r '.providers | to_entries[] | "\(.key + 1)). \(.value.name)\n   Default: \(.value.default_model)\n   Base URL: \(.value.base_url)\n   Auth: \(.value.auth_format)\n   Env Var: \(.value.auth_env_var)\n"' "$PROVIDERS_JSON"
+}
+
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            --no-interact|--non-interactive|-y)
+                NO_INTERACT=true
+                shift
+                ;;
+            --provider|-p)
+                SELECTED_PROVIDER="$2"
+                shift 2
+                ;;
+            --model|-m)
+                SELECTED_MODEL="$2"
+                shift 2
+                ;;
+            --api-key|-k)
+                SELECTED_API_KEY="$2"
+                shift 2
+                ;;
+            --shell|-s)
+                SELECTED_SHELL="$2"
+                shift 2
+                ;;
+            --install-pipx)
+                AUTO_INSTALL_PIPX=true
+                shift
+                ;;
+            --force|-f)
+                FORCE_OVERWRITE=true
+                shift
+                ;;
+            --list-providers)
+                list_providers
+                exit 0
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
         esac
     done
 }
 
-# Prompt for input with default
-prompt_with_default() {
-    local prompt="$1"
-    local default="$2"
-    local var_name="$3"
-    
-    if [[ -n "$default" ]]; then
-        read -p "$prompt [$default]: " input
-        eval "$var_name=\"${input:-$default}\""
-    else
-        read -p "$prompt: " input
-        eval "$var_name=\"$input\""
-    fi
-}
-
 # =============================================================================
-# DEPENDENCY CHECKS
-# =============================================================================
-
-# Check and install pipx
-check_pipx() {
-    log_header "Checking pipx Installation"
-    
-    if command -v pipx >/dev/null 2>&1; then
-        log_success "pipx is already installed"
-        return 0
-    fi
-    
-    log_warning "pipx not found. Attempting to install..."
-    
-    # Try to install via pip
-    if command -v pip >/dev/null 2>&1; then
-        log_info "Installing pipx via pip..."
-        pip install pipx
-        
-        if command -v pipx >/dev/null 2>&1; then
-            log_success "pipx installed successfully"
-            return 0
-        fi
-    fi
-    
-    # Try system package manager
-    if command -v apt-get >/dev/null 2>&1; then
-        log_info "Installing pipx via apt..."
-        sudo apt-get update && sudo apt-get install -y pipx
-    elif command -v brew >/dev/null 2>&1; then
-        log_info "Installing pipx via brew..."
-        brew install pipx
-    elif command -v dnf >/dev/null 2>&1; then
-        log_info "Installing pipx via dnf..."
-        sudo dnf install -y pipx
-    elif command -v pacman >/dev/null 2>&1; then
-        log_info "Installing pipx via pacman..."
-        sudo pacman -S --noconfirm python-pipx
-    fi
-    
-    if command -v pipx >/dev/null 2>&1; then
-        log_success "pipx installed successfully"
-        return 0
-    fi
-    
-    log_error "Failed to install pipx. Please install manually: pip install pipx"
-    return 1
-}
-
-# =============================================================================
-# INSTALLATION FUNCTIONS
-# =============================================================================
-
-# Install shell-gpt via pipx
-install_shell_gpt() {
-    log_header "Installing shell-gpt via pipx"
-    
-    # Check if already installed
-    if pipx list 2>/dev/null | grep -q "shell-gpt"; then
-        log_info "shell-gpt is already installed via pipx"
-        
-        if prompt_yes_no "Reinstall shell-gpt?" "n"; then
-            log_info "Reinstalling shell-gpt..."
-            pipx reinstall shell-gpt 2>/dev/null || pipx install --force shell-gpt
-        fi
-    else
-        log_info "Installing shell-gpt..."
-        pipx install shell-gpt
-    fi
-    
-    # Verify installation
-    if [[ -f "$HOME/.local/share/pipx/venvs/shell-gpt/bin/sgpt" ]]; then
-        log_success "shell-gpt installed successfully"
-        
-        # Show version
-        local version=$("$HOME/.local/share/pipx/venvs/shell-gpt/bin/sgpt" --version 2>/dev/null || echo "unknown")
-        log_info "Installed version: $version"
-    else
-        log_error "shell-gpt installation failed"
-        return 1
-    fi
-    
-    return 0
-}
-
-# Copy wrapper script
-install_wrapper() {
-    log_header "Installing Wrapper Script"
-    
-    # Determine source file
-    local source_file=""
-    if [[ -f "$WRAPPER_SOURCE" ]]; then
-        source_file="$WRAPPER_SOURCE"
-    elif [[ -f "$(pwd)/bin/sgpt" ]]; then
-        source_file="$(pwd)/bin/sgpt"
-    elif [[ -f "$HOME/bin/sgpt" ]]; then
-        log_info "Wrapper already exists at ~/bin/sgpt"
-        source_file="$HOME/bin/sgpt"
-    else
-        log_error "Could not find wrapper source file"
-        return 1
-    fi
-    
-    # Create ~/bin if it doesn't exist
-    if [[ ! -d "$INSTALL_DIR" ]]; then
-        log_info "Creating $INSTALL_DIR..."
-        mkdir -p "$INSTALL_DIR"
-    fi
-    
-    # Copy wrapper
-    log_info "Copying wrapper to $INSTALL_DIR/sgpt..."
-    cp "$source_file" "$INSTALL_DIR/sgpt"
-    chmod +x "$INSTALL_DIR/sgpt"
-    
-    log_success "Wrapper installed to $INSTALL_DIR/sgpt"
-    return 0
-}
-
-# Configure shell PATH
-configure_shell_path() {
-    log_header "Configuring Shell PATH"
-    
-    local shell=$(detect_shell)
-    local config_file=$(get_shell_config "$shell")
-    
-    log_info "Detected shell: $shell"
-    log_info "Shell config: $config_file"
-    
-    # Check if ~/bin is already in PATH
-    local path_line="export PATH=\"\$HOME/bin:\$PATH\""
-    
-    if [[ -f "$config_file" ]] && grep -q "$INSTALL_DIR" "$config_file" 2>/dev/null; then
-        log_info "PATH already configured in $config_file"
-    else
-        log_info "Adding $INSTALL_DIR to PATH in $config_file"
-        
-        # Create backup
-        if [[ -f "$config_file" ]]; then
-            cp "$config_file" "$config_file.backup.$(date +%Y%m%d%H%M%S)"
-        fi
-        
-        # Add PATH export
-        {
-            echo ""
-            echo "# sgpt-wrapper: Add ~/bin to PATH"
-            echo "$path_line"
-        } >> "$config_file"
-        
-        log_success "PATH configured in $config_file"
-    fi
-    
-    # Create alias for convenience
-    local alias_line="alias sgpt='$INSTALL_DIR/sgpt'"
-    
-    if [[ -f "$config_file" ]] && grep -q "alias sgpt=" "$config_file" 2>/dev/null; then
-        log_info "sgpt alias already exists"
-    else
-        {
-            echo ""
-            echo "# sgpt-wrapper: sgpt alias"
-            echo "$alias_line"
-        } >> "$config_file"
-        
-        log_success "Added sgpt alias"
-    fi
-    
-    return 0
-}
-
-# =============================================================================
-# PROVIDER SETUP
-# =============================================================================
-
-# Interactive provider setup
-setup_provider() {
-    log_header "LLM Provider Setup"
-    
-    echo "Available providers:"
-    echo "  1) OpenAI"
-    echo "  2) MiniMax"
-    echo "  3) Ollama (local)"
-    echo "  4) Together AI"
-    echo "  5) Groq"
-    echo "  6) Custom"
-    echo ""
-    
-    local choice
-    read -p "Select provider [2]: " choice
-    choice="${choice:-2}"
-    
-    local provider=""
-    case "$choice" in
-        1) provider="openai" ;;
-        2) provider="minimax" ;;
-        3) provider="ollama" ;;
-        4) provider="together" ;;
-        5) provider="groq" ;;
-        6) provider="custom" ;;
-        *) provider="minimax" ;;
-    esac
-    
-    echo "Selected provider: $provider"
-    echo ""
-    
-    # Get API key
-    local api_key=""
-    local key_var="${PROVIDER_KEY_VARS[$provider]}"
-    
-    if [[ "$provider" != "ollama" ]]; then
-        local prompt_msg="Enter your ${provider} API key"
-        if [[ "$provider" == "custom" ]]; then
-            prompt_msg="Enter your API key"
-        fi
-        
-        # Check for existing key in environment
-        if [[ -n "${!key_var}" ]]; then
-            log_info "Found existing $key_var in environment"
-            if prompt_yes_no "Use existing API key?" "y"; then
-                api_key="${!key_var}"
-            fi
-        fi
-        
-        if [[ -z "$api_key" ]]; then
-            read -p "$prompt_msg: " -s api_key
-            echo ""
-        fi
-        
-        if [[ -z "$api_key" ]]; then
-            log_warning "No API key provided. You can set it later in $CONFIG_FILE"
-        fi
-    else
-        # Ollama doesn't need API key
-        api_key="not_needed_for_local"
-    fi
-    
-    # Get custom endpoint if needed
-    local custom_endpoint=""
-    local custom_model=""
-    
-    if [[ "$provider" == "custom" ]]; then
-        prompt_with_default "Enter API base URL" "https://api.example.com/v1" custom_endpoint
-        prompt_with_default "Enter model name" "gpt-4" custom_model
-    fi
-    
-    # Get model (allow customization for non-custom)
-    if [[ "$provider" != "custom" ]]; then
-        local default_model="${PROVIDER_MODELS[$provider]}"
-        prompt_with_default "Enter model name" "$default_model" custom_model
-    fi
-    
-    # Write configuration
-    write_config "$provider" "$api_key" "$custom_endpoint" "$custom_model"
-    
-    return 0
-}
-
-# Write configuration file
-write_config() {
-    local provider="$1"
-    local api_key="$2"
-    local custom_endpoint="$3"
-    local custom_model="$4"
-    
-    log_header "Writing Configuration"
-    
-    # Create config directory
-    mkdir -p "$CONFIG_DIR"
-    
-    # Determine values based on provider
-    local endpoint="${PROVIDER_ENDPOINTS[$provider]:-$custom_endpoint}"
-    local model="${PROVIDER_MODELS[$provider]:-$custom_model}"
-    local url_var="${PROVIDER_URL_VARS[$provider]}"
-    local model_var="${PROVIDER_MODEL_VARS[$provider]}"
-    local key_var="${PROVIDER_KEY_VARS[$provider]}"
-    
-    # Check if config already exists
-    local update_mode=false
-    if [[ -f "$CONFIG_FILE" ]]; then
-        log_info "Updating existing configuration..."
-        update_mode=true
-    fi
-    
-    {
-        echo "# ============================================================================="
-        echo "# sgpt-wrapper Configuration"
-        echo "# Generated on $(date)"
-        echo "# ============================================================================="
-        echo ""
-        echo "# ============================================================================="
-        echo "# API CONFIGURATION"
-        echo "# ============================================================================="
-        echo ""
-        echo "# OpenAI API configuration"
-        if [[ "$provider" == "openai" ]]; then
-            echo "${key_var}=${api_key}"
-            echo "${url_var}=${endpoint}"
-            echo "${model_var}=${model}"
-        else
-            echo "OPENAI_API_KEY=${OPENAI_API_KEY:-YOUR_OPENAI_API_KEY}"
-            echo "OPENAI_API_BASE_URL=https://api.openai.com/v1"
-            echo "OPENAI_MODEL=gpt-4"
-        fi
-        echo ""
-        echo "# MiniMax API configuration"
-        if [[ "$provider" == "minimax" ]]; then
-            echo "${key_var}=${api_key}"
-            echo "${url_var}=${endpoint}"
-            echo "${model_var}=${model}"
-        else
-            echo "MINIMAX_API_KEY=${MINIMAX_API_KEY:-YOUR_MINIMAX_API_KEY}"
-            echo "MINIMAX_API_BASE_URL=https://api.minimax.io/v1"
-            echo "MINIMAX_MODEL=MiniMax-M2.1"
-        fi
-        echo ""
-        echo "# Ollama API configuration (local)"
-        if [[ "$provider" == "ollama" ]]; then
-            echo "${key_var}=${api_key}"
-            echo "${url_var}=${endpoint}"
-            echo "${model_var}=${model}"
-        else
-            echo "OLLAMA_API_KEY=not_needed_for_local"
-            echo "OLLAMA_API_BASE_URL=http://localhost:11434/v1"
-            echo "OLLAMA_MODEL=llama2"
-        fi
-        echo ""
-        echo "# Together AI API configuration"
-        if [[ "$provider" == "together" ]]; then
-            echo "${key_var}=${api_key}"
-            echo "${url_var}=${endpoint}"
-            echo "${model_var}=${model}"
-        else
-            echo "TOGETHER_API_KEY=${TOGETHER_API_KEY:-YOUR_TOGETHER_API_KEY}"
-            echo "TOGETHER_API_BASE_URL=https://api.together.ai/v1"
-            echo "TOGETHER_MODEL=meta-llama/Llama-2-70b-chat-hf"
-        fi
-        echo ""
-        echo "# Groq API configuration"
-        if [[ "$provider" == "groq" ]]; then
-            echo "${key_var}=${api_key}"
-            echo "${url_var}=${endpoint}"
-            echo "${model_var}=${model}"
-        else
-            echo "GROQ_API_KEY=${GROQ_API_KEY:-YOUR_GROQ_API_KEY}"
-            echo "GROQ_API_BASE_URL=https://api.groq.com/openai/v1"
-            echo "GROQ_MODEL=llama2-70b-8192"
-        fi
-        echo ""
-        echo "# ============================================================================="
-        echo "# WRAPPER-SPECIFIC SETTINGS"
-        echo "# ============================================================================="
-        echo ""
-        echo "# Selected provider"
-        echo "DEFAULT_PROVIDER=$provider"
-        echo ""
-        echo "# Wrapper-specific system prompt"
-        echo "WRAPPER_SYSTEM_PROMPT=You are a helpful AI assistant."
-        echo ""
-        echo "# Default model for the wrapper"
-        echo "WRAPPER_MODEL=$model"
-        echo ""
-        echo "# ============================================================================="
-        echo "# GENERAL SETTINGS"
-        echo "# ============================================================================="
-        echo ""
-        echo "# Cache settings"
-        echo "CACHE_ENABLED=true"
-        echo "CACHE_PATH=~/.cache/shell_gpt"
-        echo ""
-        echo "# Display settings"
-        echo "SHOW_PROVIDER=true"
-        echo "SHOW_MODEL=true"
-        echo ""
-        echo "# Edit behavior"
-        echo "EDITOR=nano"
-    } > "$CONFIG_FILE"
-    
-    # Set proper API key if provided
-    if [[ -n "$api_key" ]] && [[ "$api_key" != "not_needed_for_local" ]]; then
-        # Use sed to update just the API key line
-        sed -i "s|^${key_var}=.*|${key_var}=${api_key}|" "$CONFIG_FILE"
-    fi
-    
-    log_success "Configuration written to $CONFIG_FILE"
-}
-
-# =============================================================================
-# SHELL INTEGRATION
-# =============================================================================
-
-# Configure shell integration
-setup_shell_integration() {
-    log_header "Shell Integration Setup"
-    
-    if prompt_yes_no "Enable shell integration (hotkey support)?" "n"; then
-        log_info "Shell integration is managed via the sgpt alias"
-        log_info "Usage: sgpt -s \"your command\""
-        log_info "This will execute commands directly. Use without -s for chat mode."
-    fi
-    
-    return 0
-}
-
-# =============================================================================
-# MAIN INSTALLER
+# MAIN
 # =============================================================================
 
 main() {
-    echo -e "${BOLD}"
-    echo "╔═══════════════════════════════════════════════════════════════╗"
-    echo "║         sgpt-wrapper Installer                              ║"
-    echo "║         Interactive LLM Shell Wrapper Setup                ║"
-    echo "╚═══════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}"
+    # Parse command line arguments
+    parse_arguments "$@"
     
-    # Check for pipx
+    # Handle curl pipe mode
+    handle_curl_mode
+    
+    # Check for jq dependency
+    if ! command -v jq &>/dev/null; then
+        log_error "jq is required. Please install jq first."
+        exit 1
+    fi
+    
+    # Welcome message
+    if is_interactive && [ "$DRY_RUN" = false ]; then
+        echo -e "${GREEN}=== sgpt-wrapper Installer ===${NC}"
+        echo ""
+    fi
+    
+    # Offer pipx installation if needed
     if ! check_pipx; then
-        log_error "Cannot proceed without pipx"
-        exit 1
+        offer_pipx_install || true
     fi
     
-    # Install shell-gpt
-    if ! install_shell_gpt; then
-        log_error "Failed to install shell-gpt"
-        exit 1
+    # Select provider
+    select_provider
+    
+    # Generate configuration
+    if [ -n "$SELECTED_PROVIDER" ]; then
+        generate_config
     fi
     
-    # Install wrapper
-    if ! install_wrapper; then
-        log_error "Failed to install wrapper"
-        exit 1
+    # Install sgpt
+    install_sgpt
+    
+    # Install shell completions
+    install_completions
+    
+    # Summary
+    if [ "$DRY_RUN" = false ]; then
+        echo ""
+        log_success "Installation complete!"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Set your API key: export ${SELECTED_PROVIDER^^}_API_KEY='your-key'"
+        echo "  2. Restart your shell"
+        echo "  3. Run: sgpt --help"
+        echo ""
     fi
-    
-    # Configure shell PATH
-    configure_shell_path
-    
-    # Setup provider (interactive)
-    if prompt_yes_no "Configure LLM provider now?" "y"; then
-        setup_provider
-    else
-        log_info "Skipping provider setup. Configure manually in $CONFIG_FILE"
-    fi
-    
-    # Shell integration
-    setup_shell_integration
-    
-    # Final summary
-    log_header "Installation Complete!"
-    
-    echo "Summary:"
-    echo "  - shell-gpt: Installed via pipx"
-    echo "  - Wrapper:   $INSTALL_DIR/sgpt"
-    echo "  - Config:    $CONFIG_FILE"
-    echo ""
-    
-    echo "Next steps:"
-    echo "  1. Restart your shell or source your config:"
-    echo "     source ~/.bashrc  # for bash"
-    echo "     source ~/.zshrc  # for zsh"
-    echo ""
-    echo "  2. Test the installation:"
-    echo "     sgpt --version"
-    echo "     sgpt \"Hello, world!\""
-    echo ""
-    
-    echo -e "${GREEN}Happy coding with AI assistance!${NC}"
 }
 
 # Run main function
