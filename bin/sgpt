@@ -1,0 +1,85 @@
+#!/bin/bash
+# sgpt-wrapper - Clean version that removes thinking blocks
+
+source ~/.config/shell_gpt/.sgptrc 2>/dev/null
+
+get_shell_mode() {
+    [ "$DEFAULT_EXECUTE_SHELL_CMD" = "true" ] && echo "execute" || echo "clipboard"
+}
+
+extract_command() {
+    perl -pe 's/<think>.*?<\/think>//g' | grep -v '^$' | grep -v 'Warning' | grep -v '^Thinking:' | tail -1
+}
+
+handle_shell() {
+    local no_interaction=""
+    local prompt=""
+    local args=("$@")
+    
+    for arg in "${args[@]}"; do
+        case "$arg" in
+            --no-interaction|-n) no_interaction="yes" ;;
+            *) prompt="${prompt}${prompt:+ }${arg}" ;;
+        esac
+    done
+    
+    prompt=$(echo "$prompt" | sed 's/^ *| *$//')
+    
+    raw_output=$(~/.local/share/pipx/venvs/shell-gpt/bin/sgpt --shell --no-interaction "$prompt" 2>&1)
+    cmd=$(echo "$raw_output" | extract_command)
+    
+    [ -z "$cmd" ] && echo "Error: No command extracted" && return 1
+    
+    
+    if [ -n "$no_interaction" ]; then
+        if [ "$(get_shell_mode)" = "execute" ]; then
+            # echo "⚡ Executing: $cmd"
+            eval "$cmd"
+        else
+            # echo "📋 Copied: $cmd"
+            echo "$cmd" | xclip -selection clipboard 2>/dev/null || echo "$cmd"
+        fi
+    else
+        if [ "$(get_shell_mode)" = "execute" ]; then
+            echo "⚡ Executing: $cmd"
+            eval "$cmd"
+        else
+            echo ""
+            echo "Command: $cmd"
+            echo ""
+            echo "[E]xecute, [M]odify, [D]escribe, [A]bort: "
+            read choice
+            case "$choice" in
+                e|E) eval "$cmd" ;;
+                m|M) if command -v xclip >/dev/null; then
+                         echo "$cmd" | xclip -selection clipboard >/dev/null 2>&1
+                     elif command -v xsel >/dev/null; then
+                          echo "$cmd" | xsel --clipboard >/dev/null 2>&1
+                     else
+                         echo "$cmd"
+                     fi;;
+                d|D) ~/.local/share/pipx/venvs/shell-gpt/bin/sgpt --describe-shell "$cmd" ;;
+                *) echo "Aborted" ;;
+            esac
+        fi
+    fi
+}
+
+handle_code() {
+    local prompt="$*"
+    local code=$(~/.local/share/pipx/venvs/shell-gpt/bin/sgpt --code "$prompt" 2>&1)
+    code=$(echo "$code" | grep -v "Warning:" | tr -d '\r')
+    
+    echo ""
+    echo "Generated code:"
+    echo "$code"
+    echo ""
+    echo "📋 Copied to clipboard"
+    echo "$code" | xclip -selection clipboard 2>/dev/null || echo "$code" | xsel --clipboard 2>/dev/null || echo "$code"
+}
+
+case "$1" in
+    -s|--shell) shift; handle_shell "$@" ;;
+    -c|--code) shift; handle_code "$@" ;;
+    *) ~/.local/share/pipx/venvs/shell-gpt/bin/sgpt "$@" ;;
+esac
