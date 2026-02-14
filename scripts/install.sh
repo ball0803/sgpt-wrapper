@@ -947,6 +947,29 @@ generate_config() {
 
 # Install the sgpt command
 install_sgpt() {
+    # In curl pipe mode, skip installation - user needs to install manually
+    if is_curl_mode; then
+        log_info "Curl pipe mode detected - skipping package installation"
+        echo ""
+        echo "=============================================="
+        echo "Configuration complete!"
+        echo ""
+        echo "To complete installation, run these commands:"
+        echo ""
+        echo "  # Clone the repository"
+        echo "  git clone https://github.com/ball0803/sgpt-wrapper.git"
+        echo "  cd sgpt-wrapper"
+        echo ""
+        echo "  # Install via pipx"
+        echo "  pipx install ."
+        echo ""
+        echo "  # Or install via pip"
+        echo "  pip install --user -e ."
+        echo "=============================================="
+        echo ""
+        return 0
+    fi
+    
     local install_method=""
     
     if check_pipx; then
