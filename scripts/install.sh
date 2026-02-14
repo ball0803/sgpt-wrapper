@@ -947,25 +947,39 @@ generate_config() {
 
 # Install the sgpt command
 install_sgpt() {
-    # In curl pipe mode, skip installation - user needs to install manually
+    # In curl pipe mode, install shell-gpt and download wrapper
     if is_curl_mode; then
-        log_info "Curl pipe mode detected - skipping package installation"
+        log_info "Installing sgpt (shell-gpt) via pipx..."
+        
+        if command -v pipx &>/dev/null; then
+            pipx install shell-gpt
+            pipx ensurepath
+        elif command -v pip &>/dev/null; then
+            pip install --user shell-gpt
+        else
+            log_error "Neither pipx nor pip is available"
+            return 1
+        fi
+        
+        log_info "Downloading sgpt-wrapper..."
+        
+        # Create local bin directory
+        local wrapper_dir="$HOME/.local/bin"
+        mkdir -p "$wrapper_dir"
+        
+        # Download wrapper
+        local wrapper_url="https://raw.githubusercontent.com/ball0803/sgpt-wrapper/main/bin/sgpt"
+        if command -v curl &>/dev/null; then
+            curl -sL "$wrapper_url" -o "$wrapper_dir/sgpt"
+        elif command -v wget &>/dev/null; then
+            wget -q "$wrapper_url" -O "$wrapper_dir/sgpt"
+        fi
+        chmod +x "$wrapper_dir/sgpt"
+        
+        log_success "Installed sgpt-wrapper to $wrapper_dir/sgpt"
         echo ""
-        echo "=============================================="
-        echo "Configuration complete!"
-        echo ""
-        echo "To complete installation, run these commands:"
-        echo ""
-        echo "  # Clone the repository"
-        echo "  git clone https://github.com/ball0803/sgpt-wrapper.git"
-        echo "  cd sgpt-wrapper"
-        echo ""
-        echo "  # Install via pipx"
-        echo "  pipx install ."
-        echo ""
-        echo "  # Or install via pip"
-        echo "  pip install --user -e ."
-        echo "=============================================="
+        echo "Add to your PATH if needed:"
+        echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
         echo ""
         return 0
     fi
